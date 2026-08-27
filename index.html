@@ -1043,18 +1043,45 @@ const FIELD={
   }
   const WORDS=t=>String(t||"").split(/(\s+)/).filter(x=>x.length);
   const PARAS=t=>String(t||"").split(/\n{2,}/).map(x=>x.trim()).filter(x=>x.length);
-  function wordDiff(before,after){
-    let out="",buf="",mode="";
-    const flush=()=>{ if(!buf) return;
-      out += mode==="-" ? '<del class="d-del">'+esc(buf)+'</del>'
-           : mode==="+" ? '<ins class="d-ins">'+esc(buf)+'</ins>' : esc(buf);
-      buf=""; };
-    lcsOps(WORDS(before),WORDS(after)).forEach(op=>{
-      if(op[0]!==mode){ flush(); mode=op[0]; }
-      buf+=op[1];
+  // Grouping the ops run by run is what made the marks unreadable. Two different
+  // sentences still share their "the"s and "in"s, and every shared word ended a run,
+  // so a rewritten stretch came out as a stutter - 1080/the, x/revision, 1920/pass -
+  // where neither the struck text nor the added text was a phrase anyone could read.
+  //
+  // So gather each contiguous stretch of change into one region, folding in any
+  // equality too short to be real text rather than coincidence, and show the region
+  // as what v1 said followed by what v2 says. Long equalities still end the region,
+  // which is what keeps untouched text unmarked.
+  const REGION_GLUE=15;                                  // chars: above this an equality is real
+  function regions(ops){
+    const L=x=>x.trim().length;
+    const out=[]; let was="",now="",hold="";
+    const close=()=>{ if(was||now){ out.push(["chg",was,now]); was=""; now=""; } };
+    ops.forEach(o=>{
+      if(o[0]==="="){ hold+=o[1]; return; }
+      if(hold){
+        if((was||now) && L(hold)<=Math.max(L(was),L(now)) && L(hold)<=REGION_GLUE){
+          was+=hold; now+=hold;                          // coincidence, not a boundary
+        }else{
+          close(); out.push(["eq",hold,hold]);
+        }
+        hold="";
+      }
+      if(o[0]==="-") was+=o[1]; else now+=o[1];
     });
-    flush();
+    close();
+    if(hold) out.push(["eq",hold,hold]);
     return out;
+  }
+  function renderOps(ops){
+    return regions(ops).map(x=>
+      x[0]==="eq" ? esc(x[1])
+      : (x[1].trim()?'<del class="d-del">'+esc(x[1])+'</del>':'')+
+        (x[2].trim()?'<ins class="d-ins">'+esc(x[2])+'</ins>':'')
+    ).join("");
+  }
+  function wordDiff(before,after){
+    return renderOps(lcsOps(WORDS(before),WORDS(after)));
   }
   // Two blocks are worth word-diffing only if one is recognisably the other edited.
   // Diffing unrelated text interleaves the two into nonsense, so measure the overlap
@@ -1112,29 +1139,12 @@ const FIELD={
       cur.push(o);
     });
     runs.push(cur);
-    const html=runs.filter(r=>r.some(o=>o[1].trim())).map(r=>{
-      // Word level is right for an edit and wrong for a rewrite: two unrelated
-      // paragraphs still share their "the"s and "and"s, and diffing through them
-      // alternates word by word into something no one can read. So when almost all
-      // of a paragraph moved, show the old whole struck out and the new whole added.
-      const len=o=>o[1].trim().length;
-      const total=r.reduce((a,o)=>a+len(o),0);
-      const moved=r.filter(o=>o[0]!=="=").reduce((a,o)=>a+len(o),0);
-      if(total && moved/total>0.6){
-        const was=r.filter(o=>o[0]!=="+").map(o=>o[1]).join("").trim();
-        const now=r.filter(o=>o[0]!=="-").map(o=>o[1]).join("").trim();
-        return (was?'<p class="d-gone"><del class="d-del">'+esc(was)+'</del></p>':'')+
-               (now?'<p><ins class="d-ins">'+esc(now)+'</ins></p>':'');
-      }
-      let out="",buf="",mode="";
-      const flush=()=>{ if(!buf) return;
-        out += mode==="-" ? '<del class="d-del">'+esc(buf)+'</del>'
-             : mode==="+" ? '<ins class="d-ins">'+esc(buf)+'</ins>' : esc(buf);
-        buf=""; };
-      r.forEach(o=>{ if(o[0]!==mode){ flush(); mode=o[0]; } buf+=o[1]; });
-      flush();
-      return '<p>'+out+'</p>';
-    }).join("");
+    // No whole-paragraph threshold any more. It decided all or nothing for a run,
+    // and once v2 lost its paragraph breaks the run was the entire answer - so one
+    // edit past the line turned the whole thing into a single red block, and one
+    // short of it left the whole thing stuttering. Regions decide per change.
+    const html=runs.filter(r=>r.some(o=>o[1].trim()))
+                   .map(r=>'<p>'+renderOps(r)+'</p>').join("");
     return html || '<p class="d-none">Nothing submitted for this question.</p>';
   }
   function paintDiff(el,before,after){ el.innerHTML=diffHTML(before,after); }
@@ -1780,7 +1790,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="85f10851878b";
+  const BUILD="0f36fab5e907";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
