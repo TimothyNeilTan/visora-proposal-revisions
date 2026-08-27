@@ -10,6 +10,7 @@ HERE=os.path.dirname(os.path.abspath(__file__))
 TASKS=json.load(open(os.path.join(HERE,"data/tasks.json")))
 TOKENS=json.load(open(os.path.join(HERE,"data/people.json")))
 STATE_DIR=os.path.join(HERE,".devstate"); os.makedirs(STATE_DIR,exist_ok=True)
+CODES={}; SESSIONS={}          # dev only: in the real backend these are Cache/Properties
 
 class H(http.server.SimpleHTTPRequestHandler):
     def __init__(self,*a,**k): super().__init__(*a,directory=HERE,**k)
@@ -18,13 +19,24 @@ class H(http.server.SimpleHTTPRequestHandler):
         self.send_response(code); self.send_header("content-type","application/json")
         self.send_header("access-control-allow-origin","*")
         self.send_header("content-length",str(len(b))); self.end_headers(); self.wfile.write(b)
+    def _lookup(self,email):
+        who=TOKENS.get(email)
+        if not who and email.endswith("@sievedata.com"):
+            who={"name":email.split("@")[0],"tasks":list(TASKS.keys()),"rev":True}
+        return who
     def _who(self):
+        """Mirror of authed_(): a live session, or a correct one-time code."""
         q=urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-        tok=(q.get("email",[""])[0] or q.get("k",[""])[0]).strip().lower()
-        who=TOKENS.get(tok)
-        if not who and tok.endswith("@sievedata.com"):
-            who={"name":tok.split("@")[0],"tasks":list(TASKS.keys()),"rev":True}
-        return tok, who
+        sess=q.get("s",[""])[0]
+        if sess and sess in SESSIONS:
+            em=SESSIONS[sess]; return em, self._lookup(em)
+        em=(q.get("email",[""])[0]).strip().lower()
+        if not em or not self._lookup(em): return em, None          # unknown_email
+        code=q.get("code",[""])[0]
+        if not code: return em, "need_code"
+        if CODES.get(em)!=code: return em, "bad_code"               # distinct from unknown
+        CODES.pop(em,None)                                          # one use only
+        return em, self._lookup(em)
     def _route(self):
         u=urllib.parse.urlparse(self.path)
         q=urllib.parse.parse_qs(u.query)
@@ -32,8 +44,18 @@ class H(http.server.SimpleHTTPRequestHandler):
         return u.path.lstrip("/"), "worker"
     def do_GET(self):
         route,dialect=self._route()
+        if route=="code":
+            q=urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            em=(q.get("email",[""])[0]).strip().lower()
+            if not self._lookup(em): return self._json({"error":"unknown_email"},200)
+            import random
+            CODES[em]="%06d"%random.randint(0,999999)
+            # DEV ONLY: the real backend emails this and never returns it.
+            # This stand-in hands it back so the flow can be tested without mail.
+            return self._json({"ok":True,"sent":True,"devCode":CODES[em]})
         if route=="session":
             tok,who=self._who()
+            if isinstance(who,str): return self._json({"error":who}, 200 if dialect=="apps" else 403)
             if not who: return self._json({"error":"unknown_email"}, 200 if dialect=="apps" else 403)
             responses={};versions={};savedAt=None;savedBy=None
             for tid in who["tasks"]:
@@ -46,7 +68,14 @@ class H(http.server.SimpleHTTPRequestHandler):
                 responses.update(newest.get("responses") or {})
                 if newest.get("at") and (savedAt is None or newest["at"]>savedAt):
                     savedAt=newest["at"]; savedBy=newest.get("by")
-            return self._json({"who":{"name":who["name"],"rev":who["rev"]},
+            import secrets as _s
+            q=urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            sess=q.get("s",[""])[0]
+            if not sess:
+                sess=_s.token_hex(20); SESSIONS[sess]=tok; CODES.pop(tok,None)
+                issued=sess
+            else: issued=None
+            return self._json({"who":{"name":who["name"],"rev":who["rev"]},"session":issued,
                                "tasks":[TASKS[t] for t in who["tasks"] if t in TASKS],
                                "state":{"responses":responses,"versions":versions,
                                         "savedAt":savedAt,"savedBy":savedBy}})
@@ -55,6 +84,7 @@ class H(http.server.SimpleHTTPRequestHandler):
         route,dialect=self._route()
         if route=="state":
             tok,who=self._who()
+            if isinstance(who,str): return self._json({"error":who}, 200 if dialect=="apps" else 403)
             if not who: return self._json({"error":"unknown_email"}, 200 if dialect=="apps" else 403)
             body=json.loads(self.rfile.read(int(self.headers["content-length"]) or 0) or b"{}")
             for tid in (body.get("versions") or {}):

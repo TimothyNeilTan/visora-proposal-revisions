@@ -561,7 +561,14 @@ dialog::backdrop{background:rgba(10,14,20,.55)}
       <label for="gate-email">Email address</label>
       <input id="gate-email" type="email" autocomplete="email" placeholder="you@example.com" required>
       <p class="gate-err" id="gate-err"></p>
-      <button class="btn btn-primary" type="submit" id="gate-go">Show my findings</button>
+      <button class="btn btn-primary" type="submit" id="gate-go">Email me a code</button>
+    </form>
+    <form class="gate-form" id="code-form" hidden>
+      <label for="gate-code">Six-digit code</label>
+      <input id="gate-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required>
+      <p class="gate-err" id="code-err"></p>
+      <button class="btn btn-primary" type="submit" id="code-go">Sign in</button>
+      <button type="button" class="linkbtn" id="code-back">Use a different address</button>
     </form>
   </div>
 </div>
@@ -1496,10 +1503,16 @@ const FIELD={
   // ---- backend: this page holds no proposal data until the API sends it ----
   const API=(window.PROPOSAL_API||"").trim();
   const WHOKEY="proposal-revisions/email";
-  let EMAIL="";
+  const SESSKEY="proposal-revisions/session";
+  let EMAIL="", SESSION="", CODE="";
   // Apps Script exposes one endpoint and routes on ?path=. The address travels in
   // the request, never in the page URL, so it stays out of history and referrers.
-  const apiUrl=p=> API+"?path="+p+"&email="+encodeURIComponent(EMAIL);
+  const apiUrl=p=>{
+    let u=API+"?path="+p+"&email="+encodeURIComponent(EMAIL);
+    if(SESSION) u+="&s="+encodeURIComponent(SESSION);
+    else if(CODE) u+="&code="+encodeURIComponent(CODE);
+    return u;
+  };
   let saveTimer=null;
 
   function gateFail(title,msg){
@@ -1515,22 +1528,71 @@ const FIELD={
       return;
     }
     const form=document.getElementById("gate-form"), input=document.getElementById("gate-email");
-    const err=document.getElementById("gate-err"), go=document.getElementById("gate-go");
-    form.addEventListener("submit",ev=>{ ev.preventDefault(); signInWith(input.value); });
-    let remembered=""; try{ remembered=localStorage.getItem(WHOKEY)||""; }catch(e){}
-    if(remembered){ input.value=remembered; signInWith(remembered); }
+    const cform=document.getElementById("code-form"), cinput=document.getElementById("gate-code");
+    const gerr=document.getElementById("gate-err"), go=document.getElementById("gate-go");
+    const cerr=document.getElementById("code-err"), cgo=document.getElementById("code-go");
+
+    form.addEventListener("submit",async ev=>{
+      ev.preventDefault();
+      const addr=String(input.value||"").trim().toLowerCase();
+      if(!addr) return;
+      gerr.textContent=""; go.disabled=true; go.textContent="Sending…";
+      let res=null;
+      try{
+        const r=await fetch(API+"?path=code&email="+encodeURIComponent(addr),{cache:"no-store"});
+        res=await r.json();
+      }catch(e){ res={error:"unreachable"}; }
+      go.disabled=false; go.textContent="Email me a code";
+      if(res&&res.ok){
+        EMAIL=addr;
+        form.hidden=true; cform.hidden=false;
+        document.getElementById("gate-msg").textContent=
+          "We emailed a six-digit code to "+addr+". It expires in 10 minutes.";
+        cinput.focus();
+        return;
+      }
+      gerr.textContent =
+        res&&res.error==="unknown_email" ? "No proposal is filed under that address. Check the address you submitted with, or ask the reviewer."
+      : res&&res.error==="too_many_codes" ? "Too many codes requested for that address. Wait an hour and try again."
+      : "Could not reach the server. Try again in a moment.";
+    });
+
+    cform.addEventListener("submit",ev=>{
+      ev.preventDefault();
+      CODE=String(cinput.value||"").trim();
+      if(CODE.length!==6){ cerr.textContent="Enter the six digits from the email."; return; }
+      cerr.textContent=""; cgo.disabled=true; cgo.textContent="Checking…";
+      signInWith(EMAIL);
+    });
+
+    document.getElementById("code-back").addEventListener("click",()=>{
+      EMAIL=""; CODE=""; cinput.value=""; cerr.textContent="";
+      cform.hidden=true; form.hidden=false;
+      document.getElementById("gate-msg").textContent=
+        "Enter the email address you submitted your task proposal with.";
+      input.focus();
+    });
+
+    let rEmail="", rSess="";
+    try{ rEmail=localStorage.getItem(WHOKEY)||""; rSess=localStorage.getItem(SESSKEY)||""; }catch(e){}
+    if(rEmail&&rSess){ EMAIL=rEmail; SESSION=rSess; input.value=rEmail; signInWith(rEmail); }
   }
 
   async function signInWith(addr){
-    const input=document.getElementById("gate-email");
-    const err=document.getElementById("gate-err"), go=document.getElementById("gate-go");
     const clean=String(addr||"").trim().toLowerCase();
     if(!clean) return;
     EMAIL=clean;
-    if(err) err.textContent="";
-    if(go){ go.disabled=true; go.textContent="Looking…"; }
-    const done=msg=>{ if(go){ go.disabled=false; go.textContent="Show my findings"; }
-                      if(err) err.textContent=msg||""; };
+    const cgo=document.getElementById("code-go"), cerr=document.getElementById("code-err");
+    const done=msg=>{
+      if(cgo){ cgo.disabled=false; cgo.textContent="Sign in"; }
+      if(cerr) cerr.textContent=msg||"";
+      if(msg){                                   // a stale session must not strand anyone
+        SESSION=""; try{ localStorage.removeItem(SESSKEY); }catch(e){}
+        const f=document.getElementById("gate-form"), c=document.getElementById("code-form");
+        if(f&&c&&SESSION==="" && !CODE){ c.hidden=true; f.hidden=false;
+          document.getElementById("gate-err").textContent=msg; cerr.textContent=""; }
+      }
+    };
     // Apps Script drops the occasional cold-start request, so retry before giving up.
     let data=null, lastErr=null;
     for(let attempt=0; attempt<3 && !data; attempt++){
@@ -1540,8 +1602,10 @@ const FIELD={
         if(!r.ok && r.status!==403){ lastErr="http "+r.status; continue; }
         const body=await r.json();
         if(r.status===403 || (body&&body.error)){
-          try{ localStorage.removeItem(WHOKEY); }catch(e){}
-          done("No proposal is filed under that address. Check the address you submitted with, or ask the reviewer.");
+          const code=body&&body.error;
+          done(code==="bad_code"     ? "That code is not right, or it has expired. Ask for a new one."
+             : code==="need_code"    ? "Enter the six-digit code we emailed you."
+             : "No proposal is filed under that address. Check the address you submitted with, or ask the reviewer.");
           return;
         }
         data=body;
@@ -1551,8 +1615,11 @@ const FIELD={
       done("Could not reach the server after three tries. This is usually temporary — try again.");
       return;
     }
-    done("");
-    try{ localStorage.setItem(WHOKEY,EMAIL); }catch(e){}
+    if(data.session) SESSION=data.session;
+    CODE="";
+    try{ localStorage.setItem(WHOKEY,EMAIL);
+         if(SESSION) localStorage.setItem(SESSKEY,SESSION); }catch(e){}
+    if(cgo){ cgo.disabled=false; cgo.textContent="Sign in"; }
     TASKS=data.tasks||[];
     ANSWERS={}; SKILL_OF={};
     TASKS.forEach(t=>{ ANSWERS[t.id]=t.answers||{}; Object.assign(SKILL_OF,t.skills||{}); });

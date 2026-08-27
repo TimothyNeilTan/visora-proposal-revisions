@@ -86,12 +86,19 @@ History lives in the `versions` tab, one row per save.
 ## Signing in
 
 There are no links to send. Each person opens
-`https://timothyneiltan.github.io/visora-proposal-revisions/` and types the email
-address they submitted with; the backend returns only their proposals. The address
-is remembered in their browser, so they type it once.
+`https://timothyneiltan.github.io/visora-proposal-revisions/`, types the email address
+they submitted with, and receives a **six-digit code** at that address. Entering it
+signs them in for 30 days, so the code is asked for once rather than every visit.
+
+Possessing an address is therefore not enough — you have to be able to read its mail.
+Codes expire after 10 minutes, are single-use, and are capped at five per address per
+hour so nobody can be mail-bombed. Codes are sent from the Google account that owns the
+script and count against its daily mail quota (100/day on a consumer account,
+1,500 on Workspace) — ample for a batch of this size.
 
 **Any `@sievedata.com` address gets reviewer access** to every proposal and every
-iteration, without being listed anywhere. Contributors are listed individually in
+iteration, without being listed anywhere — but still has to pass the emailed code,
+so the domain rule cannot be used by typing a plausible address. Contributors are listed individually in
 `data/people.json` (email -> name, proposals, reviewer flag), which lives in the Drive
 folder and is gitignored. To add or remove a contributor, edit it, re-upload, run `reload`.
 

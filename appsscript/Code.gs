@@ -12,6 +12,10 @@
  * Saved revisions are keyed by PROPOSAL, so what a contributor saves is what the
  * reviewer opens.
  *
+ * Sign-in is a six-digit code emailed to the address, so possessing the address
+ * is not enough - you have to be able to read its mail. A verified sign-in issues
+ * a session that lasts 30 days, so the code is asked for once, not every visit.
+ *
  * Every save appends a new iteration, so the full history of a proposal is kept
  * and can be stepped through. Anyone on @sievedata.com gets reviewer access to
  * every proposal and every iteration without being listed individually.
@@ -102,6 +106,76 @@ function fileInFolder_(name) {
 }
 
 var REVIEWER_DOMAIN = '@sievedata.com';
+var CODE_TTL_SECONDS = 600;          // a code is good for 10 minutes
+var SESSION_TTL_DAYS = 30;
+var MAX_CODES_PER_HOUR = 5;          // per address, so nobody can be mail-bombed
+
+// ---- one-time codes ----------------------------------------------------------
+function sixDigits_() {
+  return String(Math.floor(Math.random() * 900000) + 100000);
+}
+function issueCode_(email) {
+  var cache = CacheService.getScriptCache();
+  var throttleKey = 'throttle:' + email;
+  var sent = Number(cache.get(throttleKey) || 0);
+  if (sent >= MAX_CODES_PER_HOUR) return null;            // caller reports "too many"
+  var code = sixDigits_();
+  cache.put('code:' + email, code, CODE_TTL_SECONDS);
+  cache.put(throttleKey, String(sent + 1), 3600);
+  MailApp.sendEmail({
+    to: email,
+    subject: 'Your Proposal Revisions sign-in code: ' + code,
+    body: 'Your sign-in code is ' + code + '\n\n' +
+          'It expires in 10 minutes and can be used once.\n\n' +
+          'If you did not ask for this, you can ignore it - nobody can sign in without the code.\n'
+  });
+  return code;
+}
+function checkCode_(email, code) {
+  var cache = CacheService.getScriptCache();
+  var want = cache.get('code:' + email);
+  if (!want || String(code || '').trim() !== want) return false;
+  cache.remove('code:' + email);                          // one use only
+  return true;
+}
+
+// ---- sessions ----------------------------------------------------------------
+function sessions_() {
+  var raw = PropertiesService.getScriptProperties().getProperty('sessions');
+  try { return raw ? JSON.parse(raw) : {}; } catch (e) { return {}; }
+}
+function newSession_(email) {
+  var all = sessions_(), now = Date.now();
+  for (var k in all) if (!all[k].exp || all[k].exp < now) delete all[k];   // prune
+  var tok = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '').slice(0, 8);
+  all[tok] = { email: email, exp: now + SESSION_TTL_DAYS * 86400000 };
+  PropertiesService.getScriptProperties().setProperty('sessions', JSON.stringify(all));
+  return tok;
+}
+function emailForSession_(tok) {
+  if (!tok) return null;
+  var s = sessions_()[tok];
+  if (!s || (s.exp && s.exp < Date.now())) return null;
+  return s.email;
+}
+
+/**
+ * Resolve the caller: a valid session, or a valid one-time code for the address.
+ * Returns {who} on success, or {error} describing what is missing.
+ */
+function authed_(e) {
+  var sessEmail = emailForSession_(e.parameter.s);
+  if (sessEmail) {
+    var w = whoFor_(sessEmail);
+    return w ? { who: w } : { error: 'unknown_email' };
+  }
+  var email = norm_(e.parameter.email);
+  if (!email) return { error: 'need_email' };
+  if (!whoFor_(email)) return { error: 'unknown_email' };
+  if (!e.parameter.code) return { error: 'need_code' };
+  if (!checkCode_(email, e.parameter.code)) return { error: 'bad_code' };
+  return { who: whoFor_(email), session: newSession_(email) };
+}
 
 function whoFor_(email) {
   var e = norm_(email);
@@ -200,8 +274,21 @@ function commentIndex_(tasks) {
 }
 
 function doGet(e) {
-  var who = whoFor_(e.parameter.email);
-  if (!who) return out_({ error: 'unknown_email' });
+  // Step one of signing in: email a six-digit code. Deliberately reports an
+  // unknown address, because these are eight known people and a typo should
+  // say so rather than fail silently.
+  if (e.parameter.path === 'code') {
+    var addr = norm_(e.parameter.email);
+    if (!addr) return out_({ error: 'need_email' });
+    if (!whoFor_(addr)) return out_({ error: 'unknown_email' });
+    var issued = issueCode_(addr);
+    if (!issued) return out_({ error: 'too_many_codes' });
+    return out_({ ok: true, sent: true });
+  }
+
+  var auth = authed_(e);
+  if (auth.error) return out_({ error: auth.error });
+  var who = auth.who;
 
   // The reviewer can refresh the data without opening the editor.
   if (e.parameter.path === 'refresh') {
@@ -222,13 +309,14 @@ function doGet(e) {
     for (var k in newest.responses) responses[k] = newest.responses[k];
     if (newest.at && (!savedAt || newest.at > savedAt)) { savedAt = newest.at; savedBy = newest.by; }
   }
-  return out_({ who: { name: who.name, rev: who.rev }, tasks: tasks,
+  return out_({ who: { name: who.name, rev: who.rev }, session: auth.session || null, tasks: tasks,
                 state: { responses: responses, versions: versions, savedAt: savedAt, savedBy: savedBy } });
 }
 
 function doPost(e) {
-  var who = whoFor_(e.parameter.email);
-  if (!who) return out_({ error: 'unknown_email' });
+  var auth = authed_(e);
+  if (auth.error) return out_({ error: auth.error });
+  var who = auth.who;
   if (e.parameter.path !== 'state') return out_({ error: 'not_found' });
 
   var body;
