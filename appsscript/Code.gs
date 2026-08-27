@@ -11,15 +11,19 @@
  * by PROPOSAL, so what a contributor saves is what the reviewer opens.
  *
  * Setup, in order:
- *   1. set SHEET_ID below
- *   2. run setup()          - creates the three sheets with headers
- *   3. upload data/tasks.json and data/tokens.json to your Drive
- *   4. run loadFromDrive()  - fills the sheets from those two files
- *   5. Deploy > New deployment > Web app, "Execute as: Me",
+ *   1. run setup()          - creates the three sheets with headers
+ *   2. drop site/data/tasks.json into the "Proposal Revisions" Drive folder
+ *   3. run loadFromDrive()  - fills the sheets from Drive
+ *   4. Deploy > New deployment > Web app, "Execute as: Me",
  *      "Who has access: Anyone"   (the token in the URL is the real check)
+ *
+ * The Sheet, the folder and tokens.json already exist; their ids are below.
  */
 
-var SHEET_ID = 'REPLACE_WITH_YOUR_SPREADSHEET_ID';
+// Created for you — these point at the real Drive items.
+var SHEET_ID       = '1T5yHoW0r8GSKozR_EyaL179ozjiPzUUqSlZ-274nIn4';  // "Proposal Revisions — data"
+var FOLDER_ID      = '1EKXEKmE5RA0MJG5M587IY8_0EjWc1QgM';             // "Proposal Revisions"
+var TOKENS_FILE_ID = '1hW-bOV_YB7-ybrSl4rTl9Kl31YoQyLD-';             // tokens.json
 
 function sheet_(name) {
   var ss = SpreadsheetApp.openById(SHEET_ID);
@@ -47,10 +51,10 @@ function setup() {
  * revisions live in the `state` sheet and are never touched by a reload.
  */
 function loadFromDrive() {
-  var tasksFile  = firstFileNamed_('tasks.json');
-  var tokensFile = firstFileNamed_('tokens.json');
-  if (!tasksFile || !tokensFile) {
-    throw new Error('Upload tasks.json and tokens.json to your Drive first.');
+  var tasksFile  = fileInFolder_('tasks.json');
+  var tokensFile = DriveApp.getFileById(TOKENS_FILE_ID);
+  if (!tasksFile) {
+    throw new Error('Drop tasks.json into the "Proposal Revisions" folder in your Drive, then run this again.');
   }
 
   var tasks = JSON.parse(tasksFile.getBlob().getDataAsString());
@@ -73,8 +77,9 @@ function loadFromDrive() {
   Logger.log('loaded %s proposals and %s tokens', trows.length - 1, krows.length - 1);
 }
 
-function firstFileNamed_(name) {
-  var it = DriveApp.getFilesByName(name);
+/** Look inside the Proposal Revisions folder, so a stray same-named file elsewhere cannot be picked up. */
+function fileInFolder_(name) {
+  var it = DriveApp.getFolderById(FOLDER_ID).getFilesByName(name);
   return it.hasNext() ? it.next() : null;
 }
 

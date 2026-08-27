@@ -30,19 +30,22 @@ python3 ../build_site.py
 
 ## Deploy
 
-**1. Make the Sheet and the script**
+Already done for you in Drive — the folder **Proposal Revisions**, the Sheet
+**Proposal Revisions — data**, and **tokens.json**. Their ids are already filled
+in at the top of `appsscript/Code.gs`.
 
-- Create a Google Sheet. Copy its ID from the URL
-  (`docs.google.com/spreadsheets/d/`**`<THIS PART>`**`/edit`).
-- In that Sheet: **Extensions → Apps Script**. Paste in `appsscript/Code.gs`.
-- Set `SHEET_ID` at the top to the ID you copied.
-- Run **`setup`** once (authorise it when asked). This creates three tabs:
-  `tokens`, `tasks`, `state`.
+**1. Add the script**
+
+- Open the Sheet → **Extensions → Apps Script**. Paste in `appsscript/Code.gs`.
+- Run **`setup`** once (authorise it when asked). Creates the `tokens`, `tasks`
+  and `state` tabs.
 
 **2. Load the data**
 
-- Upload `data/tasks.json` and `data/tokens.json` to your Drive (anywhere).
-- Run **`loadFromDrive`**. It fills the `tasks` and `tokens` tabs.
+- Drop `data/tasks.json` into the **Proposal Revisions** folder in your Drive.
+  (It is 84 KB — too big to push through the Drive connector, so this one is a
+  drag-and-drop.)
+- Run **`loadFromDrive`**. It fills the `tasks` and `tokens` tabs from Drive.
   Re-runnable: it never touches the `state` tab.
 
 **3. Publish the web app**
