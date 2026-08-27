@@ -742,6 +742,32 @@ const FIELD={
   const latestV=id=>{const l=histOf(id); return l.length? l[l.length-1].v : 1;};
   const shownV=id=>viewV[id]||latestV(id);
   const verAt=(id,n)=>histOf(id).filter(x=>x.v===n)[0]||null;
+  // Saves made before the postState fix stored an empty answers map, because the
+  // backend read ver.answers off the array of iterations it was handed. The text was
+  // not lost - it went into the same row's responses, under answer:<task>:<field> -
+  // so read it back from there when answers has nothing for this field. Without this
+  // the whole of v1 shows as removed against an empty v2.
+  function verAnswer(id,n,field){
+    const v=verAt(id,n); if(!v) return "";
+    const direct=v.answers&&v.answers[field];
+    if(typeof direct==="string"&&direct.length) return direct;
+    const rec=v.responses&&v.responses["answer:"+id+":"+field];
+    if(rec&&typeof rec.text==="string")                    // includes a field cleared to ""
+      return [rec.text].concat((rec.ins||[]).map(x=>x.text)).join("\n\n");
+    if(typeof direct==="string") return direct;
+    // Nothing recorded either way means the contributor never touched this field, so
+    // what the iteration holds for it is what was submitted. Falling through to "" here
+    // is what showed an untouched answer as removed in its entirety.
+    return String((ANSWERS[id]||{})[field]||"");
+  }
+  function verRows(id,n){
+    const v=verAt(id,n); if(!v) return [];
+    if(Array.isArray(v.rows)&&v.rows.length) return v.rows;
+    const rec=v.responses&&v.responses["rubricrows:"+id];
+    if(rec&&Array.isArray(rec.rows)) return rec.rows;
+    if(Array.isArray(v.rows)) return v.rows;               // an intentionally emptied rubric
+    return splitRubric((ANSWERS[id]||{}).rubric||"");
+  }
   // Only the newest iteration is editable; earlier ones are the record.
   const showingV1=id=>hasV2(id)&&shownV(id)!==latestV(id);
   // Once a contributor has saved, their proposal stops being a worksheet and becomes
@@ -1297,7 +1323,7 @@ const FIELD={
       }else if(key==="rubric"){
         const rows=ro
           ? (shownV(t.id)===1 ? splitRubric((ANSWERS[t.id]||{}).rubric||"")
-                              : ((verAt(t.id,shownV(t.id))||{}).rows||[]))
+                              : verRows(t.id,shownV(t.id)))
           : getRows(t.id);
         answerHTML= DIFF
           ? diffRowsHTML(splitRubric((ANSWERS[t.id]||{}).rubric||""), rows)
@@ -1332,7 +1358,7 @@ const FIELD={
       const editEl=q.querySelector(".ans-edit-area");
       const roText=()=>{ const n=shownV(t.id);
         if(n===1) return String((ANSWERS[t.id]||{})[key]||"");
-        const v=verAt(t.id,n); return String((v&&v.answers&&v.answers[key])||""); };
+        return String(verAnswer(t.id,n,key)||""); };
       if(editEl&&DIFF) paintDiff(editEl, String((ANSWERS[t.id]||{})[key]||""), roText());
       else if(editEl) paintAnswer(editEl, ro? roText() : fullAns(t.id,key), []);
       if(ro&&editEl) editEl.classList.add("is-ro");
@@ -1790,7 +1816,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="0f36fab5e907";
+  const BUILD="25adf8d5e57f";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
@@ -1974,13 +2000,26 @@ const FIELD={
     if(!r) throw err||new Error("save failed");
     return r;
   }
+  function newestVersions(){
+    const out={};
+    Object.keys(STATE.versions||{}).forEach(id=>{
+      const list=STATE.versions[id];
+      const v=Array.isArray(list)? list[list.length-1] : list;
+      if(v) out[id]={answers:v.answers||{}, rows:v.rows||[]};
+    });
+    return out;
+  }
   async function postState(){
     const r=await fetch(apiUrl("state"),{
       method:"POST",
       // text/plain keeps this a "simple" request: no CORS preflight, which
       // Apps Script cannot answer. Both backends parse the body themselves.
       headers:{"content-type":"text/plain;charset=utf-8"},
-      body:JSON.stringify({responses:STATE.responses,versions:STATE.versions})
+      // STATE.versions[id] is the whole list of iterations, but the backend reads
+      // ver.answers off whatever it is handed - and an array has no .answers, so it
+      // stored {} for every save and the saved text never reached the versions row.
+      // Send the newest iteration alone, which is the shape the backend expects.
+      body:JSON.stringify({responses:STATE.responses,versions:newestVersions()})
     });
     if(!r.ok) throw new Error("http "+r.status);
     const out=await r.json();
