@@ -1492,19 +1492,25 @@ const FIELD={
         "This page opens with a personal link. Ask the reviewer to send you yours — it ends in ?k=…");
       return;
     }
-    let data;
-    try{
-      const r=await fetch(apiUrl("session"),{cache:"no-store"});
-      if(!r.ok && r.status!==403) throw new Error("http "+r.status);
-      data=await r.json();
-      if(r.status===403 || (data&&data.error)){
-        gateFail("That link is not recognised",
-          "The link may have been revoked or mistyped. Ask the reviewer for a fresh one.");
-        return;
-      }
-    }catch(e){
+    // Apps Script drops the occasional cold-start request, so retry before giving up.
+    let data=null, lastErr=null;
+    for(let attempt=0; attempt<3 && !data; attempt++){
+      if(attempt) await new Promise(r=>setTimeout(r, 1200*attempt));
+      try{
+        const r=await fetch(apiUrl("session"),{cache:"no-store"});
+        if(!r.ok && r.status!==403){ lastErr="http "+r.status; continue; }
+        const body=await r.json();
+        if(r.status===403 || (body&&body.error)){
+          gateFail("That link is not recognised",
+            "The link may have been revoked or mistyped. Ask the reviewer for a fresh one.");
+          return;
+        }
+        data=body;
+      }catch(e){ lastErr=String(e); }
+    }
+    if(!data){
       gateFail("Could not reach the server",
-        "Check your connection and reload. If it keeps failing, tell the reviewer.");
+        "The backend did not answer after three tries. Reload the page — this is usually temporary. If it keeps failing, tell the reviewer.");
       return;
     }
     TASKS=data.tasks||[];
@@ -1522,6 +1528,15 @@ const FIELD={
   }
 
   async function pushState(){
+    let r=null, err=null;
+    for(let attempt=0; attempt<3 && !r; attempt++){
+      if(attempt) await new Promise(res=>setTimeout(res, 1200*attempt));
+      try{ r=await postState(); }catch(e){ err=e; r=null; }
+    }
+    if(!r) throw err||new Error("save failed");
+    return r;
+  }
+  async function postState(){
     const r=await fetch(apiUrl("state"),{
       method:"POST",
       // text/plain keeps this a "simple" request: no CORS preflight, which
