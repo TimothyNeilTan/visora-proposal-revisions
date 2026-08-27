@@ -21,7 +21,10 @@ class H(http.server.SimpleHTTPRequestHandler):
     def _who(self):
         q=urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
         tok=(q.get("email",[""])[0] or q.get("k",[""])[0]).strip().lower()
-        return tok, TOKENS.get(tok)
+        who=TOKENS.get(tok)
+        if not who and tok.endswith("@sievedata.com"):
+            who={"name":tok.split("@")[0],"tasks":list(TASKS.keys()),"rev":True}
+        return tok, who
     def _route(self):
         u=urllib.parse.urlparse(self.path)
         q=urllib.parse.parse_qs(u.query)
@@ -36,11 +39,13 @@ class H(http.server.SimpleHTTPRequestHandler):
             for tid in who["tasks"]:
                 p=os.path.join(STATE_DIR,tid+".json")
                 if not os.path.exists(p): continue
-                s=json.load(open(p))
-                responses.update(s.get("responses") or {})
-                if s.get("version"): versions[tid]=s["version"]
-                if s.get("savedAt") and (savedAt is None or s["savedAt"]>savedAt):
-                    savedAt=s["savedAt"]; savedBy=s.get("savedBy")
+                hist=json.load(open(p))
+                if not hist: continue
+                versions[tid]=hist
+                newest=hist[-1]
+                responses.update(newest.get("responses") or {})
+                if newest.get("at") and (savedAt is None or newest["at"]>savedAt):
+                    savedAt=newest["at"]; savedBy=newest.get("by")
             return self._json({"who":{"name":who["name"],"rev":who["rev"]},
                                "tasks":[TASKS[t] for t in who["tasks"] if t in TASKS],
                                "state":{"responses":responses,"versions":versions,
@@ -74,9 +79,16 @@ class H(http.server.SimpleHTTPRequestHandler):
             for tid in who["tasks"]:
                 sl=slices.get(tid); ver=(body.get("versions") or {}).get(tid)
                 if not sl and not ver: continue
-                json.dump({"responses":sl or {},"version":ver,"savedAt":now,"savedBy":who["name"]},
-                          open(os.path.join(STATE_DIR,tid+".json"),"w"))
-                written.append(tid)
+                fp=os.path.join(STATE_DIR,tid+".json")
+                hist=json.load(open(fp)) if os.path.exists(fp) else []
+                if isinstance(ver,list): ver=ver[-1] if ver else None
+                n=(hist[-1]["v"]+1) if hist else 2
+                hist.append({"v":n,"at":now,"by":who["name"],
+                             "answers":(ver or {}).get("answers",{}),
+                             "rows":(ver or {}).get("rows",[]),
+                             "responses":sl or {}})
+                json.dump(hist,open(fp,"w"))
+                written.append({"task":tid,"v":n})
             return self._json({"ok":True,"savedAt":now,"savedBy":who["name"],"tasks":written})
         return self._json({"error":"not_found"},404)
     def log_message(self,*a): pass

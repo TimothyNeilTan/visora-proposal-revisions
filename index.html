@@ -705,9 +705,16 @@ const FIELD={
     renderRail(); renderTask();
   }
   const answered=r=>!!(r&&(r.status==="edited"||r.status==="rejected"));
-  const viewV={};                                   // {taskId:'v1'|'v2'} which version is on screen
-  const hasV2=id=>!!(STATE.versions&&STATE.versions[id]);
-  const showingV1=id=>hasV2(id)&&viewV[id]==="v1";
+  const viewV={};                                   // {taskId: iteration number on screen}
+  // STATE.versions[id] is every saved iteration, oldest first. v1 is the original
+  // submission and is not stored - it comes from ANSWERS.
+  const histOf=id=>((STATE.versions&&STATE.versions[id])||[]);
+  const hasV2=id=>histOf(id).length>0;
+  const latestV=id=>{const l=histOf(id); return l.length? l[l.length-1].v : 1;};
+  const shownV=id=>viewV[id]||latestV(id);
+  const verAt=(id,n)=>histOf(id).filter(x=>x.v===n)[0]||null;
+  // Only the newest iteration is editable; earlier ones are the record.
+  const showingV1=id=>hasV2(id)&&shownV(id)!==latestV(id);
   // the gate is per proposal: the comments on the one you are looking at
   const curItems=()=>ALL.filter(i=>i.task===current);
   const outstanding=()=>curItems().filter(i=>!answered(STATE.responses[i.id]));
@@ -972,27 +979,31 @@ const FIELD={
       const f=fieldOf(title,it[0]); (byField[f]=byField[f]||[]).push(it);
     }));
 
-    const V2=hasV2(t.id)?STATE.versions[t.id]:null;
-    if(V2&&!viewV[t.id]) viewV[t.id]="v2";
-    const ro=showingV1(t.id);                       // v1 is the submitted record: read-only
-    const shownV=V2?(viewV[t.id]||"v2"):(t.version||"v1");
+    const hist=histOf(t.id), V2=hist.length?hist[hist.length-1]:null;
+    const cur=shownV(t.id);
+    const ro=showingV1(t.id);                       // anything but the newest is read-only
+    const shownLabel="v"+cur;
 
     const head=document.createElement("div"); head.className="taskhead";
-    head.innerHTML='<h2>'+esc(t.name)+' <span class="vtag">'+esc(shownV)+'</span></h2>'+
+    head.innerHTML='<h2>'+esc(t.name)+' <span class="vtag">'+esc(shownLabel)+'</span></h2>'+
       '<p class="byline">'+esc(t.who)+' · submitted 26 Aug 2026'+
-        (V2?' · v2 saved '+new Date(V2.at).toLocaleDateString()+' by '+esc(V2.by||"contributor"):'')+'</p>'+
+        (V2?' · '+hist.length+' revision'+(hist.length>1?'s':'')+', latest v'+V2.v+' by '+esc(V2.by||"contributor")+' on '+new Date(V2.at).toLocaleDateString():'')+'</p>'+
       (V2?'<div class="vrow">'+
         '<div class="vswitch">'+
-          '<button type="button" class="vbtn" data-v="v1" aria-pressed="'+(viewV[t.id]==="v1")+'">v1 · as submitted</button>'+
-          '<button type="button" class="vbtn" data-v="v2" aria-pressed="'+(viewV[t.id]==="v2")+'">v2 · revised</button>'+
+          '<button type="button" class="vbtn" data-v="1" aria-pressed="'+(cur===1)+'">v1 · as submitted</button>'+
+          hist.map(x=>'<button type="button" class="vbtn" data-v="'+x.v+'" aria-pressed="'+(cur===x.v)+'"'+
+            ' title="'+esc((x.by||"")+" · "+(x.at?new Date(x.at).toLocaleString():""))+'">v'+x.v+
+            (x.v===latestV(t.id)?' · latest':'')+'</button>').join("")+
         '</div>'+
         '<button type="button" class="btn btn-rerun" id="btn-rerun">Rerun validation</button>'+
       '</div>':'')+
       '<div class="verdicts">'+t.verdicts.map(([k,v])=>'<span class="vchip v-'+v+'" title="'+esc(k+' — '+(SKILL_INFO[k]||""))+'">'+esc(SKILL_SHORT[k]||k)+' <b>'+esc(v)+'</b></span>').join("")+'</div>'+
-      (V2&&viewV[t.id]==="v2"?'<p class="vnote">Verdict chips above are from the v1 pass. Rerun validation to score v2.</p>':'')+
-      (ro?'<p class="vnote">Showing the original submission. Switch to v2 to keep editing.</p>':'');
+      (V2&&!ro?'<p class="vnote">Verdict chips above are from the v1 pass. Rerun validation to score v'+cur+'.</p>':'')+
+      (ro?'<p class="vnote">Showing '+(cur===1?'the original submission':'iteration v'+cur+
+          (verAt(t.id,cur)&&verAt(t.id,cur).by?' saved by '+esc(verAt(t.id,cur).by):''))+
+          ' — read only. Switch to v'+latestV(t.id)+' to keep editing.</p>':'');
     app.appendChild(head);
-    head.querySelectorAll(".vbtn").forEach(b=>b.onclick=()=>{ viewV[t.id]=b.dataset.v; renderTask(); });
+    head.querySelectorAll(".vbtn").forEach(b=>b.onclick=()=>{ viewV[t.id]=Number(b.dataset.v); renderTask(); });
     const rerunBtn=head.querySelector("#btn-rerun");
     if(rerunBtn) rerunBtn.onclick=()=>openRevalidation(t);
 
@@ -1014,7 +1025,10 @@ const FIELD={
       }else if(type==="short"){
         answerHTML='<div class="ans-edit-area ans-short" contenteditable="'+(ro?"false":"true")+'" role="textbox" data-field="'+key+'"></div>';
       }else if(key==="rubric"){
-        const rows=ro? splitRubric((ANSWERS[t.id]||{}).rubric||"") : getRows(t.id);
+        const rows=ro
+          ? (shownV(t.id)===1 ? splitRubric((ANSWERS[t.id]||{}).rubric||"")
+                              : ((verAt(t.id,shownV(t.id))||{}).rows||[]))
+          : getRows(t.id);
         answerHTML='<div class="rubric" data-task="'+t.id+'">'+
           '<div class="rhead"><span>#</span><span>Points</span><span>Reasoning — what earns them</span><span></span></div>'+
           rows.map((r,i)=>
@@ -1044,7 +1058,10 @@ const FIELD={
 
       // the answer surface is live: type straight into it, no edit gate
       const editEl=q.querySelector(".ans-edit-area");
-      if(editEl) paintAnswer(editEl, ro? String((ANSWERS[t.id]||{})[key]||"") : fullAns(t.id,key), []);
+      const roText=()=>{ const n=shownV(t.id);
+        if(n===1) return String((ANSWERS[t.id]||{})[key]||"");
+        const v=verAt(t.id,n); return String((v&&v.answers&&v.answers[key])||""); };
+      if(editEl) paintAnswer(editEl, ro? roText() : fullAns(t.id,key), []);
       if(ro&&editEl) editEl.classList.add("is-ro");
       if(key==="rubric"){
         const box=q.querySelector(".rubric");
@@ -1370,9 +1387,12 @@ const FIELD={
       answers.uploads=(ANSWERS[t.id]||{}).uploads||[];
       const responses={};
       ALL.filter(i=>i.task===t.id).forEach(i=>{ responses[i.id]=STATE.responses[i.id]||{}; });
-      STATE.versions[t.id]={v:2,at:Date.now(),by:(me&&me.name)||"contributor",
-                            answers:answers,rows:getRows(t.id),responses:responses};
-      viewV[t.id]="v2";
+      const next=latestV(t.id)+1;
+      const list=histOf(t.id).slice();
+      list.push({v:next,at:new Date().toISOString(),by:(me&&me.name)||"contributor",
+                 answers:answers,rows:getRows(t.id),responses:responses});
+      STATE.versions[t.id]=list;
+      viewV[t.id]=next;
     });
     saveLocal();
   }

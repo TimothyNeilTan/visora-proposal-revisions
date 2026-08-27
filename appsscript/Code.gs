@@ -12,10 +12,15 @@
  * Saved revisions are keyed by PROPOSAL, so what a contributor saves is what the
  * reviewer opens.
  *
+ * Every save appends a new iteration, so the full history of a proposal is kept
+ * and can be stepped through. Anyone on @sievedata.com gets reviewer access to
+ * every proposal and every iteration without being listed individually.
+ *
  * Spreadsheet tabs:
- *   people : email | name | tasks (comma-separated ids) | rev (TRUE/FALSE)
- *   tasks  : id    | json
- *   state  : taskId | savedAt | savedBy | responses(json) | version(json)
+ *   people   : email | name | tasks (comma-separated ids) | rev (TRUE/FALSE)
+ *   tasks    : id    | json
+ *   versions : taskId | n | savedAt | savedBy | answers(json) | rows(json) | responses(json)
+ *   state    : legacy single-revision store, read once for anything saved before
  *
  * Setup:
  *   1. run setup()      - creates the three tabs
@@ -46,6 +51,8 @@ var norm_ = function (s) { return String(s || '').trim().toLowerCase(); };
 function setup() {
   sheet_('people').getRange(1, 1, 1, 4).setValues([['email', 'name', 'tasks', 'rev']]);
   sheet_('tasks').getRange(1, 1, 1, 2).setValues([['id', 'json']]);
+  sheet_('versions').getRange(1, 1, 1, 7).setValues([
+    ['taskId', 'n', 'savedAt', 'savedBy', 'answers', 'rows', 'responses']]);
   sheet_('state').getRange(1, 1, 1, 5).setValues([['taskId', 'savedAt', 'savedBy', 'responses', 'version']]);
 }
 
@@ -94,6 +101,8 @@ function fileInFolder_(name) {
   return newest;
 }
 
+var REVIEWER_DOMAIN = '@sievedata.com';
+
 function whoFor_(email) {
   var e = norm_(email);
   if (!e) return null;
@@ -108,6 +117,12 @@ function whoFor_(email) {
       };
     }
   }
+  // Not listed individually, but on the reviewer domain: full access.
+  if (e.slice(-REVIEWER_DOMAIN.length) === REVIEWER_DOMAIN) {
+    var all = [], t = rows_('tasks');
+    for (var j = 0; j < t.length; j++) if (t[j][0]) all.push(String(t[j][0]));
+    return { email: e, name: e.split('@')[0], tasks: all, rev: true };
+  }
   return null;
 }
 
@@ -117,6 +132,37 @@ function allTasks_() {
     if (!r[i][0]) continue;
     try { out[String(r[i][0])] = JSON.parse(r[i][1]); } catch (e) {}
   }
+  return out;
+}
+
+/**
+ * Every saved iteration per proposal, oldest first. Anything written before the
+ * history tab existed is folded in as iteration 2 so nothing is lost.
+ */
+function versionsByTask_() {
+  var out = {}, r = rows_('versions');
+  for (var i = 0; i < r.length; i++) {
+    var tid = String(r[i][0] || '');
+    if (!tid) continue;
+    (out[tid] = out[tid] || []).push({
+      v: Number(r[i][1]) || 2,
+      at: r[i][2] ? String(r[i][2]) : null,
+      by: r[i][3] ? String(r[i][3]) : null,
+      answers: r[i][4] ? JSON.parse(r[i][4]) : {},
+      rows: r[i][5] ? JSON.parse(r[i][5]) : [],
+      responses: r[i][6] ? JSON.parse(r[i][6]) : {}
+    });
+  }
+  var legacy = stateRows_();
+  for (var t in legacy) {
+    if (out[t] && out[t].length) continue;         // history wins where it exists
+    var s = legacy[t];
+    if (!s.version) continue;
+    out[t] = [{ v: 2, at: s.savedAt, by: s.savedBy,
+                answers: s.version.answers || {}, rows: s.version.rows || [],
+                responses: s.responses || {} }];
+  }
+  for (var k in out) out[k].sort(function (a, b) { return a.v - b.v; });
   return out;
 }
 
@@ -164,16 +210,17 @@ function doGet(e) {
   }
   if (e.parameter.path !== 'session') return out_({ error: 'not_found' });
 
-  var all = allTasks_(), st = stateRows_();
+  var all = allTasks_(), hist = versionsByTask_();
   var tasks = [], responses = {}, versions = {}, savedAt = null, savedBy = null;
   for (var i = 0; i < who.tasks.length; i++) {
     var id = who.tasks[i];
     if (all[id]) tasks.push(all[id]);
-    var s = st[id];
-    if (!s) continue;
-    for (var k in s.responses) responses[k] = s.responses[k];
-    if (s.version) versions[id] = s.version;
-    if (s.savedAt && (!savedAt || s.savedAt > savedAt)) { savedAt = s.savedAt; savedBy = s.savedBy; }
+    var list = hist[id];
+    if (!list || !list.length) continue;
+    versions[id] = list;                                   // every iteration, oldest first
+    var newest = list[list.length - 1];                    // working state is the newest one
+    for (var k in newest.responses) responses[k] = newest.responses[k];
+    if (newest.at && (!savedAt || newest.at > savedAt)) { savedAt = newest.at; savedBy = newest.by; }
   }
   return out_({ who: { name: who.name, rev: who.rev }, tasks: tasks,
                 state: { responses: responses, versions: versions, savedAt: savedAt, savedBy: savedBy } });
@@ -204,18 +251,21 @@ function doPost(e) {
       slices[tid][key] = responses[key];
     }
 
-    var sh = sheet_('state'), st = stateRows_();
+    var sh = sheet_('versions'), hist = versionsByTask_();
     var savedAt = new Date().toISOString(), written = [];
     for (var i = 0; i < who.tasks.length; i++) {
       var t = who.tasks[i], slice = slices[t], ver = versions[t];
       if (!slice && !ver) continue;
-      var row = [t, savedAt, who.name, JSON.stringify(slice || {}), ver ? JSON.stringify(ver) : ''];
-      for (var c = 3; c <= 4; c++) {
-        if (String(row[c]).length > 45000) return out_({ error: 'too_large', task: t });
+      var prev = hist[t] || [];
+      var n = prev.length ? prev[prev.length - 1].v + 1 : 2;   // v1 is the original submission
+      var answers = JSON.stringify((ver && ver.answers) || {});
+      var rws     = JSON.stringify((ver && ver.rows) || []);
+      var resp    = JSON.stringify(slice || {});
+      if (answers.length > 45000 || rws.length > 45000 || resp.length > 45000) {
+        return out_({ error: 'too_large', task: t });
       }
-      if (st[t]) sh.getRange(st[t].row, 1, 1, 5).setValues([row]);
-      else sh.appendRow(row);
-      written.push(t);
+      sh.appendRow([t, n, savedAt, who.name, answers, rws, resp]);
+      written.push({ task: t, v: n });
     }
     return out_({ ok: true, savedAt: savedAt, savedBy: who.name, tasks: written });
   } finally {

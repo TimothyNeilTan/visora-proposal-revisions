@@ -75,6 +75,14 @@ keep it out of the repo.
 > New version**, which keeps the same `/exec` URL. Creating a *new* deployment
 > mints a new URL and you would have to rebuild the page.
 
+## Iterations
+
+Every save appends a new iteration rather than overwriting the last, so the whole
+history of a proposal is kept. The header shows one chip per iteration —
+`v1 · as submitted`, `v2`, `v3`, `v4 · latest` — and switching between them swaps
+the answers and the rubric. Only the newest is editable; earlier ones are the record.
+History lives in the `versions` tab, one row per save.
+
 ## Signing in
 
 There are no links to send. Each person opens
@@ -82,9 +90,10 @@ There are no links to send. Each person opens
 address they submitted with; the backend returns only their proposals. The address
 is remembered in their browser, so they type it once.
 
-Access is controlled by `data/people.json` (email -> name, proposals, reviewer flag),
-which lives in the Drive folder and is gitignored. To add or remove someone, edit it,
-re-upload, and run `reload`.
+**Any `@sievedata.com` address gets reviewer access** to every proposal and every
+iteration, without being listed anywhere. Contributors are listed individually in
+`data/people.json` (email -> name, proposals, reviewer flag), which lives in the Drive
+folder and is gitignored. To add or remove a contributor, edit it, re-upload, run `reload`.
 
 Note on the threat model: an email address is guessable in a way a random token is not,
 so anyone who knows a contributor's address could read that contributor's feedback.
