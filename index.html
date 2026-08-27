@@ -749,6 +749,10 @@ const FIELD={
   // Reviewers are never frozen - they keep the live console on every proposal.
   const isRev=()=>!!(me&&me.rev);
   const frozen=id=>!isRev()&&hasV2(id);
+  // Reviewers were excluded from the diff by frozen(), which is backwards - they are
+  // the ones reading for what changed. It is a toggle now, on by default past v1.
+  const diffOn={};
+  const diffShown=(id,cur)=>cur!==1&&hasV2(id)&&diffOn[id]!==false;
   // "Edit answer" arms a comment: it settles when the answer it points at actually
   // changes. Two things were wrong with keeping that in a per-field closure. It did
   // not survive renderTask() - adding a rubric row or switching version tab silently
@@ -1175,8 +1179,8 @@ const FIELD={
     const hist=histOf(t.id), V2=hist.length?hist[hist.length-1]:null;
     const cur=shownV(t.id);
     const FZ=frozen(t.id);                          // a contributor, after their own save
-    const ro=FZ||showingV1(t.id);                   // anything but the newest is read-only
-    const DIFF=FZ&&cur!==1;                         // the before/after, not a bare iteration
+    const DIFF=diffShown(t.id,cur);                 // the before/after, not a bare iteration
+    const ro=FZ||showingV1(t.id)||DIFF;             // a diff is a comparison, not an editor
     const shownLabel="v"+cur;
 
     const head=document.createElement("div"); head.className="taskhead";
@@ -1190,11 +1194,18 @@ const FIELD={
             ' title="'+esc((x.by||"")+" · "+(x.at?new Date(x.at).toLocaleString():""))+'">v'+x.v+
             (x.v===latestV(t.id)?' · latest':'')+'</button>').join("")+
         '</div>'+
+        (cur!==1?'<button type="button" class="vbtn vbtn-diff" id="btn-diff" aria-pressed="'+DIFF+'"'+
+          ' title="Mark what changed against v1">Changes</button>':'')+
         (isRev()?'<button type="button" class="btn btn-rerun" id="btn-rerun">Rerun validation</button>':'')+
       '</div>':'')+
       '<div class="verdicts">'+t.verdicts.map(([k,v])=>'<span class="vchip v-'+v+'" title="'+esc(k+' — '+(SKILL_INFO[k]||""))+'">'+esc(SKILL_SHORT[k]||k)+' <b>'+esc(v)+'</b></span>').join("")+'</div>'+
       (V2&&!ro?'<p class="vnote">Verdict chips above are from the v1 pass. Rerun validation to score v'+cur+'.</p>':'')+
-      (FZ
+      (DIFF&&isRev()
+        ? '<p class="vnote">Showing what changed between v1 and v'+cur+': '+
+          '<span class="d-key d-key-del">removed or replaced</span>, '+
+          '<span class="d-key d-key-ins">added</span>. Turn off <b>Changes</b> to read v'+cur+
+          ' plainly'+(cur===latestV(t.id)?' and edit it':'')+'.</p>'
+      : FZ
         ? '<p class="vnote">'+(DIFF
             ? 'Showing what changed between v1 and v'+cur+': <span class="d-key d-key-del">removed or replaced</span>, '+
               '<span class="d-key d-key-ins">added</span>. Verdict chips are from the v1 pass — '+
@@ -1206,7 +1217,12 @@ const FIELD={
           ' — read only. Switch to v'+latestV(t.id)+' to keep editing.</p>'
         : '');
     app.appendChild(head);
-    head.querySelectorAll(".vbtn").forEach(b=>b.onclick=()=>{ viewV[t.id]=Number(b.dataset.v); renderTask(); });
+    head.querySelectorAll(".vbtn").forEach(b=>{
+      if(b.id==="btn-diff") return;
+      b.onclick=()=>{ viewV[t.id]=Number(b.dataset.v); renderTask(); };
+    });
+    const dBtn=head.querySelector("#btn-diff");
+    if(dBtn) dBtn.onclick=()=>{ diffOn[t.id]=!DIFF; renderTask(); };
     const rerunBtn=head.querySelector("#btn-rerun");
     if(rerunBtn) rerunBtn.onclick=()=>openRevalidation(t);
 
@@ -1282,7 +1298,17 @@ const FIELD={
           setRows(t.id,rows);
           wrapT.innerHTML=totalBar(t.id);
         };
-        const grow=el=>{ el.style.height="auto"; el.style.height=(el.scrollHeight+2)+"px"; };
+        // Auto-size each row to its text. The measured height is frozen inline, so it
+        // has to be recomputed whenever anything that changes text metrics changes:
+        // the column width (resize) or the web font finishing loading. Measuring at
+        // zero width yields a nonsense height that then clips the text, so skip that.
+        const grow=el=>{
+          if(!el.clientWidth) return;                  // not laid out yet - a later pass will do it
+          el.style.height="auto";
+          const hpx=el.scrollHeight+2;
+          if(hpx>4000) return;                         // implausible: layout is mid-flight
+          el.style.height=hpx+"px";
+        };
         box.querySelectorAll(".crit").forEach(el=>{
           el.addEventListener("input",()=>grow(el));
         });
@@ -1290,6 +1316,15 @@ const FIELD={
         // rAF is paused in a hidden tab, so a timer backs it up.
         const growAll=()=>box.querySelectorAll(".crit").forEach(grow);
         requestAnimationFrame(growAll); setTimeout(growAll,80);
+        // the font arrives after first paint and changes the metrics under us
+        if(document.fonts&&document.fonts.ready) document.fonts.ready.then(growAll).catch(()=>{});
+        let growTmr=null;
+        const onResize=()=>{ clearTimeout(growTmr); growTmr=setTimeout(growAll,120); };
+        window.addEventListener("resize",onResize);
+        // stop listening once this rubric is replaced by a re-render
+        const mo=new MutationObserver(()=>{ if(!document.body.contains(box)){
+          window.removeEventListener("resize",onResize); mo.disconnect(); } });
+        mo.observe(document.getElementById("app"),{childList:true});
         if(!ro) box.querySelectorAll(".pt,.crit").forEach(el=>el.addEventListener("input",commit));
         box.querySelectorAll(".rdel").forEach(btn=>btn.onclick=()=>{
           const rows=getRows(t.id).slice();
@@ -1704,7 +1739,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="2303549faece";
+  const BUILD="9f2f036f929e";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
