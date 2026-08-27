@@ -108,7 +108,6 @@ function fileInFolder_(name) {
 var REVIEWER_DOMAIN = '@sievedata.com';
 var CODE_TTL_SECONDS = 600;          // a code is good for 10 minutes
 var SESSION_TTL_DAYS = 30;
-var MAX_CODES_PER_HOUR = 5;          // per address, so nobody can be mail-bombed
 
 // ---- one-time codes ----------------------------------------------------------
 function sixDigits_() {
@@ -116,12 +115,8 @@ function sixDigits_() {
 }
 function issueCode_(email) {
   var cache = CacheService.getScriptCache();
-  var throttleKey = 'throttle:' + email;
-  var sent = Number(cache.get(throttleKey) || 0);
-  if (sent >= MAX_CODES_PER_HOUR) return null;            // caller reports "too many"
   var code = sixDigits_();
   cache.put('code:' + email, code, CODE_TTL_SECONDS);
-  cache.put(throttleKey, String(sent + 1), 3600);
   MailApp.sendEmail({
     to: email,
     subject: 'Your Proposal Revisions sign-in code: ' + code,
@@ -281,8 +276,7 @@ function doGet(e) {
     var addr = norm_(e.parameter.email);
     if (!addr) return out_({ error: 'need_email' });
     if (!whoFor_(addr)) return out_({ error: 'unknown_email' });
-    var issued = issueCode_(addr);
-    if (!issued) return out_({ error: 'too_many_codes' });
+    issueCode_(addr);
     return out_({ ok: true, sent: true });
   }
 
