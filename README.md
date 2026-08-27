@@ -12,15 +12,20 @@ site/
   index.html          the page that gets published   (built — do not edit by hand)
   data/tasks.json     all 8 proposals + comments     -> loaded into the Sheet
   data/tokens.json    token -> person + proposals    -> loaded into the Sheet, gitignored
+  config.js           the deployed /exec URL — edit after deploying, no rebuild
   appsscript/Code.gs  the API (Google Apps Script)
-  worker/             the same API as a Cloudflare Worker, if you ever switch
-  devserver.py        local stand-in for the backend, speaks both dialects
+  devserver.py        local stand-in for the backend, for testing
 ```
+
+**This repo is `site/` only, and it is safe to make public.** `data/` is
+gitignored — the proposals, the comments and the contributor emails live in the
+Sheet. Do not put the parent folder in the repo: it holds the task inputs,
+including a 309 MB TIFF that GitHub will reject outright.
 
 `index.html` is generated. Edit `../revision_console.html`, then rebuild:
 
 ```
-python3 ../build_site.py "https://script.google.com/macros/s/<ID>/exec" apps
+python3 ../build_site.py
 ```
 
 ## Deploy
@@ -47,13 +52,18 @@ python3 ../build_site.py "https://script.google.com/macros/s/<ID>/exec" apps
 - *Who has access*: **Anyone**  ← required; the token in the URL is the real check
 - Copy the `/exec` URL.
 
-**4. Build the page and publish it**
+**4. Point the page at your deployment**
 
-```
-python3 ../build_site.py "https://script.google.com/macros/s/<ID>/exec" apps
+Open `config.js`, replace the placeholder with your `/exec` URL, and commit:
+
+```js
+window.PROPOSAL_API = "https://script.google.com/macros/s/<ID>/exec";
 ```
 
-Commit `site/index.html` to a repo and turn on GitHub Pages
+That is the only place the URL appears — **no rebuild needed**. If it is still
+the placeholder, the page says so instead of failing silently.
+
+Then push and turn on GitHub Pages
 (Settings → Pages → deploy from branch, folder `/site`). The repo can be
 **public** — the page holds nothing sensitive. `data/tokens.json` is gitignored;
 keep it out of the repo.
@@ -85,8 +95,8 @@ the reviewer token and read it in the console.
 ## Testing locally before you deploy
 
 ```
-python3 devserver.py                                   # site + API on :8801
-python3 ../build_site.py http://localhost:8801 apps
+python3 devserver.py       # serves the site AND a stand-in API on :8801
+# then set config.js to "http://localhost:8801" temporarily
 open "http://localhost:8801/index.html?k=<token from data/tokens.json>"
 ```
 
