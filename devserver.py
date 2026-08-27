@@ -8,7 +8,7 @@ State is keyed per proposal, exactly as both real backends do."""
 import json,os,http.server,socketserver,urllib.parse
 HERE=os.path.dirname(os.path.abspath(__file__))
 TASKS=json.load(open(os.path.join(HERE,"data/tasks.json")))
-TOKENS=json.load(open(os.path.join(HERE,"data/tokens.json")))
+TOKENS=json.load(open(os.path.join(HERE,"data/people.json")))
 STATE_DIR=os.path.join(HERE,".devstate"); os.makedirs(STATE_DIR,exist_ok=True)
 
 class H(http.server.SimpleHTTPRequestHandler):
@@ -20,7 +20,7 @@ class H(http.server.SimpleHTTPRequestHandler):
         self.send_header("content-length",str(len(b))); self.end_headers(); self.wfile.write(b)
     def _who(self):
         q=urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-        tok=q.get("k",[""])[0]
+        tok=(q.get("email",[""])[0] or q.get("k",[""])[0]).strip().lower()
         return tok, TOKENS.get(tok)
     def _route(self):
         u=urllib.parse.urlparse(self.path)
@@ -31,7 +31,7 @@ class H(http.server.SimpleHTTPRequestHandler):
         route,dialect=self._route()
         if route=="session":
             tok,who=self._who()
-            if not who: return self._json({"error":"unknown_token"}, 200 if dialect=="apps" else 403)
+            if not who: return self._json({"error":"unknown_email"}, 200 if dialect=="apps" else 403)
             responses={};versions={};savedAt=None;savedBy=None
             for tid in who["tasks"]:
                 p=os.path.join(STATE_DIR,tid+".json")
@@ -50,7 +50,7 @@ class H(http.server.SimpleHTTPRequestHandler):
         route,dialect=self._route()
         if route=="state":
             tok,who=self._who()
-            if not who: return self._json({"error":"unknown_token"}, 200 if dialect=="apps" else 403)
+            if not who: return self._json({"error":"unknown_email"}, 200 if dialect=="apps" else 403)
             body=json.loads(self.rfile.read(int(self.headers["content-length"]) or 0) or b"{}")
             for tid in (body.get("versions") or {}):
                 if tid not in who["tasks"]:

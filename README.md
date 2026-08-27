@@ -75,19 +75,38 @@ keep it out of the repo.
 > New version**, which keeps the same `/exec` URL. Creating a *new* deployment
 > mints a new URL and you would have to rebuild the page.
 
-## Sending links
+## Signing in
 
-Each person gets `https://<user>.github.io/<repo>/?k=<their token>` from
-`data/tokens.json`. Anyone holding a link can open that person's proposals, so
-send them directly, not to a shared channel.
+There are no links to send. Each person opens
+`https://timothyneiltan.github.io/visora-proposal-revisions/` and types the email
+address they submitted with; the backend returns only their proposals. The address
+is remembered in their browser, so they type it once.
 
-To revoke or rotate: edit the `tokens` tab in the Sheet (or edit
-`data/tokens.json` and re-run `loadFromDrive`). Changes take effect immediately.
+Access is controlled by `data/people.json` (email -> name, proposals, reviewer flag),
+which lives in the Drive folder and is gitignored. To add or remove someone, edit it,
+re-upload, and run `reload`.
+
+Note on the threat model: an email address is guessable in a way a random token is not,
+so anyone who knows a contributor's address could read that contributor's feedback.
+For a small programme that is usually acceptable. If it is not, Apps Script can email a
+short-lived code to the address and verify it before granting a session.
 
 ## Updating the findings
 
-Rebuild the console, re-export `tasks.json`, upload it to Drive, run
-`loadFromDrive` again. Saved state lives in the `state` tab and survives.
+The proposals and comments live in a **secret gist**, not in Drive, so a refresh needs
+no upload:
+
+```
+python3 ../build_site.py                     # if the page itself changed
+gh gist edit 37b3db9e7618c6d183efda767cc09791 -a data/tasks.min.json
+curl -sL "<exec-url>?path=refresh&email=tim@sievedata.com"
+```
+
+That last call re-reads the gist into the Sheet. Saved revisions live in the `state`
+tab and are never touched by a refresh.
+
+The access list is the one thing still in Drive, because it holds email addresses:
+drop `data/people.json` into the **Proposal Revisions** folder and run `reload`.
 
 ## Reading what came back
 

@@ -1,29 +1,32 @@
 /**
  * Proposal Revisions API — Google Apps Script web app.
  *
- * Backed by one Spreadsheet with three sheets:
- *   tokens : token | name | email | tasks (comma-separated ids) | rev (TRUE/FALSE)
+ * Access is by email address: a contributor types the address they submitted
+ * with and gets back only their own proposals. No tokens to distribute or lose.
+ *
+ * Data comes from two places:
+ *   - the proposals + reviewer comments: a secret gist (no email addresses in it),
+ *     so refreshing the findings needs no upload and no clicking
+ *   - the access list: people.json in the Drive folder (this one holds addresses)
+ *
+ * Saved revisions are keyed by PROPOSAL, so what a contributor saves is what the
+ * reviewer opens.
+ *
+ * Spreadsheet tabs:
+ *   people : email | name | tasks (comma-separated ids) | rev (TRUE/FALSE)
  *   tasks  : id    | json
  *   state  : taskId | savedAt | savedBy | responses(json) | version(json)
  *
- * The published page holds no proposal data and no email addresses; it sends
- * ?k=<token> and gets back only the proposals that token covers. State is keyed
- * by PROPOSAL, so what a contributor saves is what the reviewer opens.
- *
- * Setup, in order:
- *   1. run setup()          - creates the three sheets with headers
- *   2. drop site/data/tasks.json into the "Proposal Revisions" Drive folder
- *   3. run loadFromDrive()  - fills the sheets from Drive
- *   4. Deploy > New deployment > Web app, "Execute as: Me",
- *      "Who has access: Anyone"   (the token in the URL is the real check)
- *
- * The Sheet, the folder and tokens.json already exist; their ids are below.
+ * Setup:
+ *   1. run setup()      - creates the three tabs
+ *   2. run reload()     - pulls proposals from the gist and people from Drive
+ *   3. Deploy > Manage deployments > edit > New version
  */
 
-// Created for you — these point at the real Drive items.
-var SHEET_ID       = '1T5yHoW0r8GSKozR_EyaL179ozjiPzUUqSlZ-274nIn4';  // "Proposal Revisions — data"
-var FOLDER_ID      = '1EKXEKmE5RA0MJG5M587IY8_0EjWc1QgM';             // "Proposal Revisions"
-var TOKENS_FILE_ID = '1hW-bOV_YB7-ybrSl4rTl9Kl31YoQyLD-';             // tokens.json
+var SHEET_ID  = '1T5yHoW0r8GSKozR_EyaL179ozjiPzUUqSlZ-274nIn4';  // "Proposal Revisions — data"
+var FOLDER_ID = '1EKXEKmE5RA0MJG5M587IY8_0EjWc1QgM';             // "Proposal Revisions"
+var TASKS_URL = 'https://gist.githubusercontent.com/TimothyNeilTan/'
+              + '37b3db9e7618c6d183efda767cc09791/raw/tasks.min.json';
 
 function sheet_(name) {
   var ss = SpreadsheetApp.openById(SHEET_ID);
@@ -37,51 +40,51 @@ function out_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
+var norm_ = function (s) { return String(s || '').trim().toLowerCase(); };
 
-/** Run once from the editor to create the sheets with their headers. */
+/** Run once from the editor to create the tabs with their headers. */
 function setup() {
-  sheet_('tokens').getRange(1, 1, 1, 5).setValues([['token', 'name', 'email', 'tasks', 'rev']]);
+  sheet_('people').getRange(1, 1, 1, 4).setValues([['email', 'name', 'tasks', 'rev']]);
   sheet_('tasks').getRange(1, 1, 1, 2).setValues([['id', 'json']]);
   sheet_('state').getRange(1, 1, 1, 5).setValues([['taskId', 'savedAt', 'savedBy', 'responses', 'version']]);
 }
 
 /**
- * Fill the sheets from tasks.json and tokens.json uploaded to your Drive.
- * Re-runnable: refreshing the findings is upload + run this again. Saved
- * revisions live in the `state` sheet and are never touched by a reload.
+ * Refresh proposals from the gist and the access list from Drive.
+ * Re-runnable and safe: the `state` tab is never touched, so saved revisions survive.
  */
-function loadFromDrive() {
-  var tasksFile  = fileInFolder_('tasks.json');
-  var tokensFile = fileInFolder_('tokens.json') || DriveApp.getFileById(TOKENS_FILE_ID);
-  if (!tasksFile) {
-    throw new Error('Drop tasks.json into the "Proposal Revisions" folder in your Drive, then run this again.');
+function reload() {
+  var res = UrlFetchApp.fetch(TASKS_URL, { muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) {
+    throw new Error('Could not read the task data (HTTP ' + res.getResponseCode() + ').');
   }
-
-  var tasks = JSON.parse(tasksFile.getBlob().getDataAsString());
+  var tasks = JSON.parse(res.getContentText());
   var ts = sheet_('tasks');
   ts.clear();
   var trows = [['id', 'json']];
   for (var id in tasks) trows.push([id, JSON.stringify(tasks[id])]);
   ts.getRange(1, 1, trows.length, 2).setValues(trows);
 
-  var tokens = JSON.parse(tokensFile.getBlob().getDataAsString());
-  var ks = sheet_('tokens');
-  ks.clear();
-  var krows = [['token', 'name', 'email', 'tasks', 'rev']];
-  for (var tok in tokens) {
-    var v = tokens[tok];
-    krows.push([tok, v.name, v.email, (v.tasks || []).join(','), v.rev ? 'TRUE' : 'FALSE']);
+  var pf = fileInFolder_('people.json');
+  var nPeople = 0;
+  if (pf) {
+    var people = JSON.parse(pf.getBlob().getDataAsString());
+    var ps = sheet_('people');
+    ps.clear();
+    var prows = [['email', 'name', 'tasks', 'rev']];
+    for (var em in people) {
+      var p = people[em];
+      prows.push([norm_(em), p.name, (p.tasks || []).join(','), p.rev ? 'TRUE' : 'FALSE']);
+    }
+    ps.getRange(1, 1, prows.length, 4).setValues(prows);
+    nPeople = prows.length - 1;
   }
-  ks.getRange(1, 1, krows.length, 5).setValues(krows);
-
-  Logger.log('loaded %s proposals and %s tokens', trows.length - 1, krows.length - 1);
+  var msg = 'loaded ' + (trows.length - 1) + ' proposals and ' + nPeople + ' people';
+  Logger.log(msg);
+  return msg;
 }
 
-/**
- * Look inside the Proposal Revisions folder and take the NEWEST match.
- * Drive keeps same-named uploads as separate files rather than replacing, so
- * re-uploading tasks.json leaves several; the most recent one is the live data.
- */
+/** Newest upload wins: Drive keeps same-named uploads side by side rather than replacing. */
 function fileInFolder_(name) {
   var it = DriveApp.getFolderById(FOLDER_ID).getFilesByName(name), newest = null;
   while (it.hasNext()) {
@@ -91,15 +94,17 @@ function fileInFolder_(name) {
   return newest;
 }
 
-function whoFor_(token) {
-  if (!token) return null;
-  var r = rows_('tokens');
+function whoFor_(email) {
+  var e = norm_(email);
+  if (!e) return null;
+  var r = rows_('people');
   for (var i = 0; i < r.length; i++) {
-    if (String(r[i][0]) === String(token)) {
+    if (norm_(r[i][0]) === e) {
       return {
+        email: e,
         name: String(r[i][1]),
-        tasks: String(r[i][3]).split(',').map(function (s) { return s.trim(); }).filter(String),
-        rev: String(r[i][4]).toUpperCase() === 'TRUE'
+        tasks: String(r[i][2]).split(',').map(function (s) { return s.trim(); }).filter(String),
+        rev: String(r[i][3]).toUpperCase() === 'TRUE'
       };
     }
   }
@@ -149,8 +154,14 @@ function commentIndex_(tasks) {
 }
 
 function doGet(e) {
-  var who = whoFor_(e.parameter.k);
-  if (!who) return out_({ error: 'unknown_token' });
+  var who = whoFor_(e.parameter.email);
+  if (!who) return out_({ error: 'unknown_email' });
+
+  // The reviewer can refresh the data without opening the editor.
+  if (e.parameter.path === 'refresh') {
+    if (!who.rev) return out_({ error: 'not_allowed' });
+    return out_({ ok: true, message: reload() });
+  }
   if (e.parameter.path !== 'session') return out_({ error: 'not_found' });
 
   var all = allTasks_(), st = stateRows_();
@@ -169,8 +180,8 @@ function doGet(e) {
 }
 
 function doPost(e) {
-  var who = whoFor_(e.parameter.k);
-  if (!who) return out_({ error: 'unknown_token' });
+  var who = whoFor_(e.parameter.email);
+  if (!who) return out_({ error: 'unknown_email' });
   if (e.parameter.path !== 'state') return out_({ error: 'not_found' });
 
   var body;

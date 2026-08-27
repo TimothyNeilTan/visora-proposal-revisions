@@ -555,9 +555,14 @@ dialog::backdrop{background:rgba(10,14,20,.55)}
 <div class="gate" id="gate">
   <div class="gate-card">
     <span class="kicker">Visora · task proposals</span>
-    <h2 id="gate-h">Opening your proposal…</h2>
-    <p id="gate-msg">One moment while we load your findings.</p>
-    <p class="gate-err" id="gate-err"></p>
+    <h2 id="gate-h">Find your proposal</h2>
+    <p id="gate-msg">Enter the email address you submitted your task proposal with.</p>
+    <form class="gate-form" id="gate-form">
+      <label for="gate-email">Email address</label>
+      <input id="gate-email" type="email" autocomplete="email" placeholder="you@example.com" required>
+      <p class="gate-err" id="gate-err"></p>
+      <button class="btn btn-primary" type="submit" id="gate-go">Show my findings</button>
+    </form>
   </div>
 </div>
 
@@ -1470,9 +1475,11 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   const API=(window.PROPOSAL_API||"").trim();
-  const TOKEN=new URLSearchParams(location.search).get("k")||"";
-  // Apps Script exposes one endpoint and routes on ?path=.
-  const apiUrl=p=> API+"?path="+p+"&k="+encodeURIComponent(TOKEN);
+  const WHOKEY="proposal-revisions/email";
+  let EMAIL="";
+  // Apps Script exposes one endpoint and routes on ?path=. The address travels in
+  // the request, never in the page URL, so it stays out of history and referrers.
+  const apiUrl=p=> API+"?path="+p+"&email="+encodeURIComponent(EMAIL);
   let saveTimer=null;
 
   function gateFail(title,msg){
@@ -1487,11 +1494,23 @@ const FIELD={
         "site/config.js still has the placeholder URL. Paste the Apps Script /exec URL into it and commit.");
       return;
     }
-    if(!TOKEN){
-      gateFail("You need your own link",
-        "This page opens with a personal link. Ask the reviewer to send you yours — it ends in ?k=…");
-      return;
-    }
+    const form=document.getElementById("gate-form"), input=document.getElementById("gate-email");
+    const err=document.getElementById("gate-err"), go=document.getElementById("gate-go");
+    form.addEventListener("submit",ev=>{ ev.preventDefault(); signInWith(input.value); });
+    let remembered=""; try{ remembered=localStorage.getItem(WHOKEY)||""; }catch(e){}
+    if(remembered){ input.value=remembered; signInWith(remembered); }
+  }
+
+  async function signInWith(addr){
+    const input=document.getElementById("gate-email");
+    const err=document.getElementById("gate-err"), go=document.getElementById("gate-go");
+    const clean=String(addr||"").trim().toLowerCase();
+    if(!clean) return;
+    EMAIL=clean;
+    if(err) err.textContent="";
+    if(go){ go.disabled=true; go.textContent="Looking…"; }
+    const done=msg=>{ if(go){ go.disabled=false; go.textContent="Show my findings"; }
+                      if(err) err.textContent=msg||""; };
     // Apps Script drops the occasional cold-start request, so retry before giving up.
     let data=null, lastErr=null;
     for(let attempt=0; attempt<3 && !data; attempt++){
@@ -1501,18 +1520,19 @@ const FIELD={
         if(!r.ok && r.status!==403){ lastErr="http "+r.status; continue; }
         const body=await r.json();
         if(r.status===403 || (body&&body.error)){
-          gateFail("That link is not recognised",
-            "The link may have been revoked or mistyped. Ask the reviewer for a fresh one.");
+          try{ localStorage.removeItem(WHOKEY); }catch(e){}
+          done("No proposal is filed under that address. Check the address you submitted with, or ask the reviewer.");
           return;
         }
         data=body;
       }catch(e){ lastErr=String(e); }
     }
     if(!data){
-      gateFail("Could not reach the server",
-        "The backend did not answer after three tries. Reload the page — this is usually temporary. If it keeps failing, tell the reviewer.");
+      done("Could not reach the server after three tries. This is usually temporary — try again.");
       return;
     }
+    done("");
+    try{ localStorage.setItem(WHOKEY,EMAIL); }catch(e){}
     TASKS=data.tasks||[];
     ANSWERS={}; SKILL_OF={};
     TASKS.forEach(t=>{ ANSWERS[t.id]=t.answers||{}; Object.assign(SKILL_OF,t.skills||{}); });
