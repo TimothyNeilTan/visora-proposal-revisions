@@ -1552,7 +1552,8 @@ const FIELD={
         return;
       }
       gerr.textContent =
-        res&&res.error==="unknown_email" ? "No proposal is filed under that address. Check the address you submitted with, or ask the reviewer."
+        res&&res.error==="unknown_token" ? "The server is running an older version that does not support email sign-in yet. Tell the reviewer the Apps Script needs redeploying."
+      : res&&res.error==="unknown_email" ? "No proposal is filed under that address. Check the address you submitted with, or ask the reviewer."
       : res&&res.error==="too_many_codes" ? "Too many codes requested for that address. Wait an hour and try again."
       : "Could not reach the server. Try again in a moment.";
     });
@@ -1603,8 +1604,9 @@ const FIELD={
         const body=await r.json();
         if(r.status===403 || (body&&body.error)){
           const code=body&&body.error;
-          done(code==="bad_code"     ? "That code is not right, or it has expired. Ask for a new one."
-             : code==="need_code"    ? "Enter the six-digit code we emailed you."
+          done(code==="bad_code"      ? "That code is not right, or it has expired. Ask for a new one."
+             : code==="need_code"     ? "Enter the six-digit code we emailed you."
+             : code==="unknown_token" ? "The server is running an older version that does not support email sign-in yet. Tell the reviewer the Apps Script needs redeploying."
              : "No proposal is filed under that address. Check the address you submitted with, or ask the reviewer.");
           return;
         }
