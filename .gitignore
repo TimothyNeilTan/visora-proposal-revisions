@@ -1,0 +1,6 @@
+# The proposals, the comments and the contributor emails live in the Sheet,
+# never in the repo. This repo can safely be public.
+data/
+
+# local test state
+.devstate/

@@ -1,0 +1,1542 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body>
+<script src="config.js"></script>
+<title>Proposal Revisions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --ground:#f4f5f7; --panel:#ffffff; --panel-2:#eef0f3; --sunk:#e7eaee;
+  --ink:#171a1f; --ink-2:#4a515c; --ink-3:#767f8c;
+  --line:#d8dce2; --line-2:#c3c9d2;
+  --accent:#0d5f63; --accent-ink:#0a4a4d; --accent-wash:#dceceb; --on-accent:#ffffff;
+  --blocker:#a51f3c; --blocker-wash:#f7dfe4;
+  --should:#8a5510; --should-wash:#f6e8d3;
+  --nice:#3f6136; --nice-wash:#e2eddd;
+  --focus:#0d5f63;
+  --shadow:0 1px 2px rgba(20,25,35,.06),0 8px 24px -16px rgba(20,25,35,.28);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#111418; --panel:#191d23; --panel-2:#20252c; --sunk:#14181d;
+    --ink:#e9ecf0; --ink-2:#aab3c0; --ink-3:#7d8794;
+    --line:#2b323b; --line-2:#3a434e;
+    --accent:#5fc6c2; --accent-ink:#8ad9d5; --accent-wash:#12332f; --on-accent:#0b2c2b;
+    --blocker:#f08098; --blocker-wash:#3a1620;
+    --should:#e0ab5c; --should-wash:#352612;
+    --nice:#96c288; --nice-wash:#1d2b19;
+    --focus:#5fc6c2;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -18px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#111418; --panel:#191d23; --panel-2:#20252c; --sunk:#14181d;
+  --ink:#e9ecf0; --ink-2:#aab3c0; --ink-3:#7d8794;
+  --line:#2b323b; --line-2:#3a434e;
+  --accent:#5fc6c2; --accent-ink:#8ad9d5; --accent-wash:#12332f; --on-accent:#0b2c2b;
+  --blocker:#f08098; --blocker-wash:#3a1620;
+  --should:#e0ab5c; --should-wash:#352612;
+  --nice:#96c288; --nice-wash:#1d2b19;
+  --focus:#5fc6c2;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -18px rgba(0,0,0,.8);
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"Source Serif 4",Georgia,serif; font-size:16px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4,.ui{font-family:Archivo,"Helvetica Neue",Arial,sans-serif}
+.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+
+/* ---------- shell ---------- */
+.wrap{display:grid; grid-template-columns:290px minmax(0,1fr); gap:0; min-height:100vh; max-width:100%}
+body{overflow-x:hidden}
+.rail{
+  background:var(--panel); border-right:1px solid var(--line);
+  padding:22px 18px 120px; position:sticky; top:0; height:100vh; overflow-y:auto;
+}
+.main{padding:18px 22px 104px; min-width:0; max-width:1320px; margin-inline:auto; width:100%}
+
+.brand{display:flex; flex-direction:column; gap:3px; margin-bottom:6px}
+.brand .kicker{
+  font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--accent); font-weight:600;
+}
+.brand h1{font-size:19px; line-height:1.2; margin:0; letter-spacing:-.01em; font-weight:700}
+.brand p{margin:6px 0 0; font-size:13px; color:var(--ink-3); line-height:1.45}
+
+.legend{display:flex; flex-direction:column; gap:7px; font-size:12px; color:var(--ink-2)}
+.rail-label{
+  font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--ink-3); font-weight:600;
+  margin:26px 0 10px; display:block;
+}
+.tasklist{display:flex; flex-direction:column; gap:5px}
+.taskbtn{
+  display:block; width:100%; text-align:left; cursor:pointer;
+  background:transparent; border:1px solid transparent; border-radius:8px;
+  padding:9px 10px; color:var(--ink); font-family:Archivo,sans-serif;
+}
+.taskbtn:hover{background:var(--panel-2)}
+.taskbtn[aria-current="true"]{background:var(--accent-wash); border-color:var(--accent); }
+.taskbtn .t-name{font-size:13.5px; font-weight:600; line-height:1.25; display:block}
+.taskbtn .t-who{font-size:11.5px; color:var(--ink-3); display:block; margin-top:2px; font-family:"IBM Plex Mono",monospace}
+.taskbtn .t-meter{display:flex; align-items:center; gap:6px; margin-top:7px}
+.bar{flex:1; height:4px; border-radius:99px; background:var(--sunk); overflow:hidden}
+.bar > i{display:block; height:100%; background:var(--accent); border-radius:99px; transition:width .25s ease}
+.t-count{font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--ink-3); font-variant-numeric:tabular-nums}
+
+/* ---------- task head ---------- */
+.taskhead{border-bottom:1px solid var(--line); padding-bottom:12px; margin-bottom:14px}
+.taskhead h2{margin:0 0 3px; font-size:23px; letter-spacing:-.02em; line-height:1.15; text-wrap:balance}
+.byline{font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--ink-3); margin:0 0 9px}
+.verdicts{display:flex; flex-wrap:wrap; gap:5px}
+.vchip{
+  font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.02em;
+  border:1px solid var(--line-2); border-radius:99px; padding:3px 9px; color:var(--ink-2);
+  display:inline-flex; gap:6px; align-items:center; background:var(--panel);
+}
+.vchip b{font-weight:600; text-transform:uppercase; letter-spacing:.06em}
+.vchip.v-fail b{color:var(--blocker)}
+.vchip.v-pass b{color:var(--nice)}
+.vchip.v-na b{color:var(--ink-3)}
+.vchip.v-advisory b{color:var(--should)}
+
+
+/* ---------- sections ---------- */
+.section{margin:30px 0 0}
+.section > h3{
+  font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3);
+  margin:0 0 12px; padding-bottom:8px; border-bottom:1px solid var(--line); font-weight:600;
+}
+.cards{display:flex; flex-direction:column; gap:12px}
+
+.card{
+  background:var(--panel); border:1px solid var(--line); border-radius:11px;
+  padding:0; overflow:hidden; box-shadow:var(--shadow);
+}
+.card.is-done{border-color:var(--accent)}
+.card-top{display:flex; gap:12px; padding:14px 16px 12px; align-items:flex-start}
+.sev{
+  flex:none; font-family:"IBM Plex Mono",monospace; font-size:9.5px; font-weight:600;
+  letter-spacing:.1em; text-transform:uppercase; padding:3px 7px; border-radius:5px; margin-top:2px;
+}
+.sev-blocker{background:var(--blocker-wash); color:var(--blocker)}
+.sev-should{background:var(--should-wash); color:var(--should)}
+.sev-nice{background:var(--nice-wash); color:var(--nice)}
+.finding{margin:0; font-size:15px; line-height:1.5}
+.finding code{
+  font-family:"IBM Plex Mono",monospace; font-size:.87em; background:var(--sunk);
+  padding:1px 5px; border-radius:4px; color:var(--ink)
+}
+.card-body{padding:0 16px 15px; display:flex; flex-direction:column; gap:10px}
+.statusrow{display:flex; flex-wrap:wrap; gap:5px; align-items:center}
+.statusrow .lab{
+  font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink-3); margin-right:4px; font-weight:600;
+}
+.st{
+  cursor:pointer; font-family:Archivo,sans-serif; font-size:12.5px; font-weight:500;
+  border:1px solid var(--line-2); background:var(--panel); color:var(--ink-2);
+  border-radius:99px; padding:4px 11px;
+}
+.st:hover{border-color:var(--ink-3); color:var(--ink)}
+.st[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:var(--on-accent)}
+textarea{
+  width:100%; min-height:78px; resize:vertical; font-family:"Source Serif 4",Georgia,serif;
+  font-size:14.5px; line-height:1.5; color:var(--ink); background:var(--sunk);
+  border:1px solid var(--line); border-radius:8px; padding:10px 12px;
+}
+textarea::placeholder{color:var(--ink-3)}
+textarea:focus-visible,.st:focus-visible,.taskbtn:focus-visible,button:focus-visible{
+  outline:2px solid var(--focus); outline-offset:2px;
+}
+
+/* ---------- action blocks ---------- */
+.act{border-radius:9px; padding:11px 13px; display:flex; flex-direction:column; gap:7px}
+.act-head{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.act-lab{
+  font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.12em;
+  text-transform:uppercase; font-weight:600;
+}
+.act-body{margin:0; font-size:14px; line-height:1.55; color:var(--ink)}
+.act-meta{margin:0; font-size:12px; color:var(--ink-3); font-family:"IBM Plex Mono",monospace; line-height:1.5}
+.act ul{margin:0; padding-left:17px; font-size:13.5px; color:var(--ink); line-height:1.5}
+.act li{margin:2px 0}
+.act-text{background:var(--accent-wash); border:1px solid var(--accent)}
+.act-text .act-lab{color:var(--accent-ink)}
+.act-file{background:var(--should-wash); border:1px solid var(--should)}
+.act-file .act-lab{color:var(--should)}
+.act-author{background:var(--blocker-wash); border:1px solid var(--blocker)}
+.act-author .act-lab{color:var(--blocker)}
+.act-confirm{background:var(--panel-2); border:1px solid var(--line-2)}
+.act-confirm .act-lab{color:var(--ink-3)}
+.btn-mini{
+  flex:none; cursor:pointer; font-family:Archivo,sans-serif; font-size:11.5px; font-weight:600;
+  border:1px solid var(--accent); background:var(--panel); color:var(--accent-ink);
+  border-radius:99px; padding:3px 10px;
+}
+.btn-mini:hover{background:var(--accent); color:var(--on-accent)}
+.fieldlab{
+  font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink-3); font-weight:600; margin-bottom:-4px;
+}
+
+/* ---------- the form ---------- */
+.q{
+  display:grid; grid-template-columns:minmax(0,1fr) 360px; gap:0 18px;
+  align-items:start; margin:0 0 10px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px;
+  padding:14px 16px; box-shadow:var(--shadow);
+}
+.q-col{grid-column:1; display:flex; flex-direction:column; min-width:0}
+.q-head{margin-bottom:8px; flex:none}
+.q-head h3{
+  font-family:Archivo,sans-serif; font-size:15.5px; font-weight:600; margin:0;
+  letter-spacing:-.005em; line-height:1.35; color:var(--ink); text-transform:none;
+  border:none; padding:0;
+}
+.q-help{margin:5px 0 0; font-size:12.5px; color:var(--ink-3); line-height:1.45}
+.q-answer{display:flex; flex-direction:column; gap:5px; min-height:0}
+.ans-lab{
+  font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink-3); font-weight:600;
+}
+textarea.ans{
+  min-height:0; background:var(--sunk); border:1px solid var(--line); border-radius:8px;
+  font-family:"Source Serif 4",Georgia,serif; font-size:14.5px; line-height:1.6;
+}
+textarea.ans:hover{border-color:var(--line-2)}
+.ans-short{margin:0; font-size:15px; font-weight:600}
+.ans-choice{margin:0; font-size:14.5px; color:var(--ink-2)}
+.ans-missing{margin:0; font-size:14px; color:var(--should); font-style:italic}
+.filelist{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:4px}
+.filelist li{
+  font-family:"IBM Plex Mono",monospace; font-size:12.5px; color:var(--ink-2);
+  background:var(--sunk); border:1px solid var(--line); border-radius:6px; padding:6px 9px;
+  overflow-wrap:anywhere;
+}
+
+/* ---------- spacing ---------- */
+/* A card with no comments should not reserve the empty comment column. */
+.q:not(.has-notes){grid-template-columns:minmax(0,1fr); padding:12px 16px}
+.q:not(.has-notes) .q-head{margin-bottom:6px}
+.ans-edit-area.ans-short{max-width:540px}
+/* Long task titles shouldn't run the full width of a wide screen. */
+.taskhead h2{max-width:34ch}
+.byline{max-width:80ch}
+/* Rail entries: clamp long titles to two lines so the meter stays put. */
+.taskbtn .t-name{
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow:hidden; line-height:1.3;
+}
+
+/* ---------- version toggle + revalidation ---------- */
+.vrow{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:0 0 10px}
+.vswitch{display:inline-flex; border:1px solid var(--line-2); border-radius:99px; padding:2px; background:var(--panel-2)}
+.vbtn{
+  cursor:pointer; font-family:Archivo,sans-serif; font-size:12px; font-weight:500;
+  border:none; background:none; color:var(--ink-2); border-radius:99px; padding:4px 12px;
+}
+.vbtn[aria-pressed="true"]{background:var(--accent); color:var(--on-accent); font-weight:600}
+.btn-rerun{font-size:12.5px; padding:5px 13px}
+.vnote{margin:0 0 10px; font-size:12px; color:var(--ink-3); font-style:italic}
+.ans-edit-area.is-ro{opacity:.85; cursor:default; background:var(--panel-2)}
+#btn-save[disabled]{opacity:.45; cursor:not-allowed}
+
+/* ---------- direct-edit answers + review anchors ---------- */
+[hidden]{display:none !important}   /* flex/grid rules otherwise defeat the hidden attribute */
+.ans-edit-area{
+  background:var(--sunk); border:1px solid var(--line); border-radius:8px; padding:11px 13px;
+  font-size:14.5px; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere;
+  display:flex; flex-direction:column; gap:9px; cursor:text; min-height:40px;
+}
+.ans-edit-area:hover{border-color:var(--line-2)}
+.ans-edit-area:focus{outline:2px solid var(--focus); outline-offset:1px; background:var(--panel)}
+.ans-edit-area p{margin:0}
+.ans-edit-area.ans-short{font-size:15px; font-weight:600; min-height:0; padding:9px 12px}
+.ans-hint{font-size:11.5px; color:var(--ink-3); font-style:italic}
+mark.hl{
+  background:var(--should-wash); color:var(--ink); border-radius:3px; padding:1px 2px;
+  box-shadow:inset 0 -2px 0 var(--should);
+}
+.rrow.is-hl{background:var(--should-wash); border-radius:8px; box-shadow:0 0 0 2px var(--should)}
+.q-flash .ans-edit-area,.q-flash .ans-choice,.q-flash .filelist,.q-flash .ans-missing{
+  box-shadow:0 0 0 3px var(--should-wash); border-radius:8px;
+}
+.note.is-active{border-color:var(--should); box-shadow:0 0 0 2px var(--should-wash)}
+.note-acts{display:flex; flex-wrap:wrap; gap:6px; align-items:center}
+.st.danger{border-color:var(--blocker); color:var(--blocker)}
+.st.danger:hover{background:var(--blocker-wash)}
+.st.primary{background:var(--accent); border-color:var(--accent); color:var(--on-accent)}
+.st[disabled]{opacity:.45; cursor:not-allowed}
+.rej-box{display:flex; flex-direction:column; gap:6px}
+.rej-box textarea{min-height:66px; font-size:13.5px}
+.rej-row{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+.rej-hint{font-size:11.5px; color:var(--blocker)}
+.settled{
+  display:flex; flex-wrap:wrap; gap:6px; align-items:baseline;
+  font-size:13px; line-height:1.5; color:var(--ink-2);
+}
+.settled .tag{
+  font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.1em;
+  text-transform:uppercase; font-weight:600; padding:3px 7px; border-radius:5px;
+}
+.settled .tag.ok{background:var(--nice-wash); color:var(--nice)}
+.settled .tag.no{background:var(--blocker-wash); color:var(--blocker)}
+.note.is-rejected{border-color:var(--blocker)}
+.note.is-edited{border-color:var(--nice)}
+.no-anchor{font-size:11.5px; color:var(--ink-3); font-style:italic}
+
+/* ---------- comment column ---------- */
+.notes{grid-column:2; display:flex; flex-direction:column; gap:7px}
+.notes-lab{
+  font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink-3); font-weight:600;
+}
+.note{
+  background:var(--panel-2); border:1px solid var(--line-2); border-radius:10px;
+  padding:9px 11px; display:flex; flex-direction:column; gap:6px;
+}
+.note.is-settled{background:var(--panel); border-color:var(--accent); opacity:.9}
+.note-top{display:flex; align-items:center; gap:8px}
+.avatar{
+  flex:none; width:22px; height:22px; border-radius:99px; background:var(--accent);
+  color:var(--on-accent); font-family:Archivo,sans-serif; font-size:11px; font-weight:700;
+  display:flex; align-items:center; justify-content:center;
+}
+.note-meta{display:flex; align-items:center; gap:7px; flex-wrap:wrap}
+.note-who{font-family:Archivo,sans-serif; font-size:12px; font-weight:600}
+.note-body{margin:0; font-size:13.5px; line-height:1.5}
+.note-body code{font-family:"IBM Plex Mono",monospace; font-size:.87em; background:var(--sunk); padding:1px 4px; border-radius:4px}
+.sug{
+  margin:0; border-left:2px solid var(--accent); background:var(--accent-wash);
+  border-radius:0 7px 7px 0; padding:8px 10px; font-size:13px; line-height:1.5; color:var(--ink);
+}
+.sug ul{margin:6px 0 0; padding-left:16px}
+.sug li{margin:2px 0}
+.sug-meta{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--ink-3)}
+textarea.reply{min-height:64px; font-size:13.5px}
+
+/* Wide layout: the answer stays pinned at the top of the card so the highlighted
+   wording is always beside whichever comment you are reading. */
+@media (min-width:1181px){
+  /* the question title travels with its answer, so a pinned answer is never orphaned */
+  .q-col{position:sticky; top:12px; align-self:start}
+  /* Only a column too tall for the viewport becomes a scroll container. Anything that
+     fits stays plain, so the wheel scrolls the page instead of being swallowed. */
+  .q-col.needs-scroll{max-height:calc(100vh - 104px)}
+  /* the scroll container would clip rings drawn outside a child's border box —
+     the whole-answer highlight and the edit focus outline both sit there, so
+     reserve room for them inside the padding box. */
+  .q-answer{padding:4px}
+  .q-col.needs-scroll .q-answer{overflow:auto; overscroll-behavior:contain}
+  /* the running total sits below the scroll area, so it never covers a rubric row */
+  .q-col.needs-scroll .q-answer{flex:0 1 auto}
+}
+@media (max-width:1180px){
+  .q{grid-template-columns:minmax(0,1fr)}
+  .notes{grid-column:1}
+  .notes{grid-column:1; grid-row:auto; margin-top:14px; padding-top:12px; border-top:1px solid var(--line)}
+}
+
+.ans-bar{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.ans-render{
+  background:var(--sunk); border:1px solid var(--line); border-radius:8px; padding:12px 14px;
+  font-size:14.5px; line-height:1.6; display:flex; flex-direction:column; gap:10px;
+}
+.ans-render p{margin:0}
+.ans-render p.ins{
+  background:var(--accent-wash); border-left:3px solid var(--accent);
+  border-radius:0 7px 7px 0; padding:9px 11px; position:relative;
+}
+.ins-tag{
+  display:block; font-family:"IBM Plex Mono",monospace; font-size:9px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--accent-ink); font-weight:600; margin-bottom:4px;
+}
+.note-applied{
+  margin:0; font-size:11.5px; line-height:1.45; color:var(--accent-ink);
+  font-family:"IBM Plex Mono",monospace;
+}
+.note-applied b{font-weight:600}
+
+.tally-wrap{margin-top:6px; flex:none}
+.tally-bar{
+  display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;
+  border-radius:8px; padding:9px 12px; border:1px solid;
+  font-family:"IBM Plex Mono",monospace; font-size:11.5px; line-height:1.45;
+}
+.tally-bar.is-ok{background:var(--nice-wash); border-color:var(--nice); color:var(--nice)}
+.tally-bar.is-off{background:var(--blocker-wash); border-color:var(--blocker); color:var(--blocker)}
+.tb-n{font-family:Archivo,sans-serif; font-size:20px; font-weight:700; font-variant-numeric:tabular-nums; line-height:1}
+.tb-of{font-size:11px; opacity:.75}
+.tb-txt{color:var(--ink-2); flex:1 1 190px}
+
+.ans-note{font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); font-weight:600}
+.filelist li{display:flex; gap:8px; align-items:baseline}
+.tick{color:var(--nice); font-weight:700; flex:none}
+
+.rubric{
+  display:flex; flex-direction:column; gap:5px;
+  border:1px solid var(--line); border-radius:9px; padding:10px 10px 12px; background:var(--panel);
+}
+.rhead{
+  display:grid; grid-template-columns:28px 74px minmax(0,1fr) 26px; gap:8px;
+  font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink-3); font-weight:600;
+  padding-bottom:2px; border-bottom:1px solid var(--line); margin-bottom:2px;
+}
+.rhead span:first-child{text-align:right}
+.rhead span:nth-child(2){text-align:center}
+.rrow{display:grid; grid-template-columns:28px 74px minmax(0,1fr) 26px; gap:8px; align-items:stretch}
+.rrow .ptcell{
+  display:flex; align-items:flex-start; justify-content:center;
+  background:var(--sunk); border:1px solid var(--line-2); border-radius:7px;
+  padding:8px 6px; align-self:stretch;
+}
+.rrow .pt{
+  font-family:"IBM Plex Mono",monospace; font-size:14px; font-weight:600; text-align:center;
+  color:var(--ink); background:transparent; border:none; padding:0; width:100%;
+  line-height:1.5; font-variant-numeric:tabular-nums;
+}
+.rrow .pt:focus{outline:none}
+.rrow .ptcell:focus-within{border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-wash)}
+.rrow .crit{
+  min-height:0; background:var(--sunk); border:1px solid var(--line); border-radius:7px;
+  font-family:"Source Serif 4",Georgia,serif; font-size:14px; line-height:1.5; padding:8px 10px;
+  align-self:stretch; overflow:hidden; resize:none;
+}
+.rrow .rdel{
+  background:none; border:1px solid transparent; cursor:pointer; color:var(--ink-3);
+  font-size:16px; line-height:1; padding:0; border-radius:6px;
+  align-self:start; height:31px; width:26px; display:flex; align-items:center; justify-content:center;
+}
+.rrow .rdel:hover{color:var(--blocker); background:var(--blocker-wash)}
+.rrow.from-review .ptcell{border-color:var(--accent)}
+.rrow.from-review .crit{border-color:var(--accent); background:var(--accent-wash)}
+.radd{
+  align-self:flex-start; margin-top:2px; cursor:pointer; background:none;
+  border:1px dashed var(--line-2); color:var(--ink-2); border-radius:7px;
+  font-family:Archivo,sans-serif; font-size:12.5px; font-weight:600; padding:6px 12px;
+}
+.radd:hover{border-color:var(--accent); color:var(--accent-ink)}
+@media (max-width:620px){
+  .rhead{display:none}
+  .rrow{grid-template-columns:22px 58px minmax(0,1fr) 24px; gap:6px}
+}
+
+.skill{
+  font-family:"IBM Plex Mono",monospace; font-size:9px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink-3); border:1px solid var(--line-2); border-radius:5px; padding:2px 6px;
+  cursor:help; white-space:nowrap;
+}
+
+.rnum{
+  font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--ink-3); font-weight:600;
+  display:flex; align-items:flex-start; justify-content:flex-end;
+  padding-top:9px; line-height:1.5; font-variant-numeric:tabular-nums;
+}
+
+.vtag{
+  font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:600; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--accent-ink); background:var(--accent-wash);
+  border:1px solid var(--accent); border-radius:6px; padding:2px 7px;
+  vertical-align:middle; position:relative; top:-3px;
+}
+
+/* ---------- sign-in gate ---------- */
+.gate{
+  position:fixed; inset:0; z-index:60; background:var(--ground);
+  display:flex; align-items:center; justify-content:center; padding:24px;
+}
+body.signed-in .gate{display:none}
+body:not(.signed-in) .wrap,body:not(.signed-in) .toolbar{display:none}
+.gate-card{
+  width:100%; max-width:430px; background:var(--panel); border:1px solid var(--line);
+  border-radius:14px; padding:28px 26px; box-shadow:var(--shadow);
+}
+.gate-card .kicker{
+  font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--accent); font-weight:600; display:block;
+}
+.gate-card h2{font-family:Archivo,sans-serif; font-size:22px; margin:6px 0 8px; letter-spacing:-.01em}
+.gate-card p{margin:0 0 18px; font-size:14.5px; color:var(--ink-2); line-height:1.5}
+.gate-form{display:flex; flex-direction:column; gap:9px}
+.gate-form label{
+  font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink-3); font-weight:600;
+}
+.gate-form input{
+  font-family:"IBM Plex Mono",monospace; font-size:14px; color:var(--ink);
+  background:var(--sunk); border:1px solid var(--line); border-radius:8px; padding:11px 12px; width:100%;
+}
+.gate-form input:focus-visible{outline:2px solid var(--focus); outline-offset:2px}
+.gate-err{margin:0; font-size:13.5px; color:var(--blocker); min-height:19px; line-height:1.4}
+.whoami{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  margin-top:14px; padding-top:12px; border-top:1px solid var(--line);
+}
+.whoami .nm{font-family:Archivo,sans-serif; font-size:12.5px; font-weight:600; line-height:1.2}
+.whoami .rl{font-family:"IBM Plex Mono",monospace; font-size:10px; color:var(--ink-3); display:block; margin-top:2px}
+.linkbtn{
+  background:none; border:none; cursor:pointer; padding:2px; color:var(--accent-ink);
+  font-family:Archivo,sans-serif; font-size:12px; font-weight:600; text-decoration:underline;
+}
+
+/* ---------- toolbar ---------- */
+.toolbar{
+  position:fixed; left:290px; right:0; bottom:0; z-index:20;
+  background:var(--panel); border-top:1px solid var(--line);
+  padding:11px 30px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  box-shadow:0 -8px 24px -20px rgba(0,0,0,.5);
+}
+.tally{display:flex; gap:16px; align-items:center; flex:1; min-width:220px}
+.tally .n{font-family:"IBM Plex Mono",monospace; font-size:12.5px; color:var(--ink-2); font-variant-numeric:tabular-nums}
+.tally .n b{color:var(--ink); font-weight:600}
+.tally .n.warn b{color:var(--blocker)}
+.btn{
+  cursor:pointer; font-family:Archivo,sans-serif; font-size:13px; font-weight:600;
+  border-radius:8px; padding:8px 15px; border:1px solid var(--line-2);
+  background:var(--panel); color:var(--ink);
+}
+.btn:hover{border-color:var(--ink-3)}
+.btn-primary{background:var(--accent); border-color:var(--accent); color:var(--on-accent)}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn[disabled]{opacity:.45; cursor:not-allowed}
+.saveline{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--ink-3)}
+
+dialog{
+  border:1px solid var(--line); border-radius:12px; background:var(--panel); color:var(--ink);
+  max-width:min(700px,92vw); width:100%; padding:0; box-shadow:var(--shadow);
+}
+dialog::backdrop{background:rgba(10,14,20,.55)}
+.dlg-head{padding:16px 18px 0; display:flex; justify-content:space-between; align-items:baseline; gap:12px}
+.dlg-head h4{margin:0; font-size:16px}
+.dlg-body{padding:12px 18px 18px}
+.dlg-body textarea{min-height:340px; font-family:"IBM Plex Mono",monospace; font-size:12.5px}
+#cdlg{max-width:460px}
+#cdlg .dlg-body{padding-bottom:4px}
+.cdlg-note{margin:0; font-size:14.5px; line-height:1.55; color:var(--ink-2)}
+.cdlg-note b{color:var(--ink)}
+.dlg-foot{display:flex; gap:8px; justify-content:flex-end; padding:0 18px 18px}
+
+@media (max-width:900px){
+  .wrap{grid-template-columns:minmax(0,1fr)}
+  .rail,.main,.tasklist{min-width:0}
+  .rail{position:static; height:auto; border-right:none; border-bottom:1px solid var(--line); padding:16px 0 14px; overflow:visible}
+  .brand,.rail > .rail-label:first-of-type{padding:0 18px}
+  .rail .rail-label{margin:16px 0 8px}
+  .tasklist{
+    flex-direction:row; overflow-x:auto; gap:8px; padding:0 18px 4px;
+    scroll-snap-type:x proximity; -webkit-overflow-scrolling:touch;
+  }
+  .taskbtn{flex:0 0 210px; scroll-snap-align:start; border-color:var(--line)}
+  .legend{display:none}                                  /* severity chips already carry this */
+  .rail > .rail-label:last-of-type{display:none}
+  .main{padding:20px 18px 150px}
+  .toolbar{left:0; padding:10px 18px; gap:10px}
+  .tally{flex:1 1 100%; gap:12px}
+  .saveline{flex:1 1 100%}
+  .btn{flex:1}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+</style>
+
+<script type="application/json" id="state">{"responses":{},"savedAt":null,"savedBy":null}</script>
+
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <span class="kicker">Visora · task proposals</span>
+    <h2 id="gate-h">Opening your proposal…</h2>
+    <p id="gate-msg">One moment while we load your findings.</p>
+    <p class="gate-err" id="gate-err"></p>
+  </div>
+</div>
+
+<div class="wrap">
+  <aside class="rail">
+    <div class="brand">
+      <span class="kicker">Visora · Blender batch</span>
+      <h1>Proposal Revisions</h1>
+      <p>Reviewer findings from the validation pass, with a place to record what you changed.</p>
+    </div>
+    <div class="whoami" id="whoami" hidden>
+      <span><span class="nm" id="who-name"></span><span class="rl" id="who-role"></span></span>
+      
+    </div>
+    <span class="rail-label">Proposals</span>
+    <div class="tasklist" id="tasklist"></div>
+    <span class="rail-label">Severity</span>
+    <div class="legend">
+      <div><span class="sev sev-blocker">Blocker</span> &nbsp;must change before approval</div>
+      <div><span class="sev sev-should">Fix</span> &nbsp;should change before we build</div>
+      <div><span class="sev sev-nice">Optional</span> &nbsp;improvement or note</div>
+    </div>
+  </aside>
+
+  <main class="main" id="app"></main>
+</div>
+
+<div class="toolbar">
+  <div class="tally">
+    <span class="n" id="tally-done"></span>
+    <span class="n warn" id="tally-block"></span>
+    <span class="saveline" id="saveline"></span>
+  </div>
+  <button class="btn" id="btn-copy">Copy my responses</button>
+  <button class="btn btn-primary" id="btn-save">Save responses</button>
+</div>
+
+<dialog id="cdlg">
+  <div class="dlg-head"><h4 id="cdlg-title">Save with comments still open?</h4></div>
+  <div class="dlg-body"><p class="cdlg-note" id="cdlg-note"></p></div>
+  <div class="dlg-foot">
+    <button class="btn" id="cdlg-cancel">Keep working</button>
+    <button class="btn btn-primary" id="cdlg-ok">Save anyway</button>
+  </div>
+</dialog>
+
+<dialog id="dlg">
+  <div class="dlg-head"><h4 id="dlg-title">Your responses</h4></div>
+  <div class="dlg-body">
+    <p style="margin:0 0 10px;font-size:14px;color:var(--ink-2)" id="dlg-note"></p>
+    <textarea id="dlg-text" readonly></textarea>
+  </div>
+  <div class="dlg-foot">
+    <button class="btn" id="dlg-close">Close</button>
+    <button class="btn" id="dlg-download" hidden>Download bundle</button>
+    <button class="btn btn-primary" id="dlg-copy">Copy to clipboard</button>
+  </div>
+</dialog>
+
+<script>
+let TASKS = [];
+
+const FORM=[["email", "Email", "", "short"], ["name", "Full name", "", "short"], ["title", "Task title", "", "short"], ["workflow", "Short summary of the end-to-end workflow, broken into its main stages", "", "long"], ["rubric", "Rubric", "This should be 5–20 line items where every main stage and specific instruction is covered. All individual points should add up to 100. Assign a point value based on relative importance. The final output should score 100% based on your instructions + rubric.", "long"], ["injection", "Mid-Task Injection", "What information can be given in the middle of the task that will require the user to materially change the output or do the task differently?", "long"], ["inputs", "Describe the input materials, files, and reference documents the task uses as inputs.", "", "long"], ["uploads", "Input materials you uploaded", "", "files"], ["anything", "Anything else reviewers should know", "", "long"]];
+let ANSWERS={};
+const SEC_FIELD={"title": "title", "workflow": "workflow", "rubric": "rubric", "injection": "injection", "inputs": "inputs", "uploads": "uploads", "anything": "anything"};
+const ITEM_FIELD={};
+
+let SKILL_OF={};
+const SKILL_INFO={"prompt-artifact-consistency": "Whether the instruction is internally consistent and possible given the files the agent actually gets.", "prompt-rubric-consistency": "Whether each criterion is checkable, agrees with the instruction, and the weights sum.", "prompt-rubric-coverage": "Whether every mandatory, observable requirement is scored by at least one criterion.", "required-files-manifest": "Which files the task needs on each side, whether the staged inputs are usable, and what the software mandates.", "task-difficulty-estimate": "Whether the task is hard for structural reasons rather than length or repetition.", "task-edit-suggestions": "Advisory: concrete edits to the instruction and rubric, ranked by consequence."};
+const SKILL_SHORT={"prompt-artifact-consistency": "instruction vs files", "prompt-rubric-consistency": "rubric consistency", "prompt-rubric-coverage": "rubric coverage", "required-files-manifest": "required files", "task-difficulty-estimate": "difficulty", "task-edit-suggestions": "suggested edits"};
+const STATUSES=[["fixed","Fixed"],["will","Will fix"],["disagree","Disagree"],["unclear","Need clarification"]];
+const STATUS_BY_KIND={
+  file:[["fixed","Attached"],["will","Will attach"],["disagree","Can't provide"],["unclear","Need clarification"]],
+  confirm:[["fixed","Confirmed"],["will","Will check"],["disagree","Disagree"],["unclear","Need clarification"]],
+  author:[["fixed","Written"],["will","Will write"],["disagree","Disagree"],["unclear","Need clarification"]]
+};
+const FIELD={
+  text:["Your wording","Paste the wording you\u2019ll use \u2014 edit the suggestion or write your own."],
+  file:["The file","Name the file you\u2019re attaching and where you\u2019ve sent it."],
+  author:["Your replacement","Write the replacement here, exactly as the client would send it."],
+  confirm:["Your answer","Confirm, or tell us what you found."],
+  none:["Your response","What did you change? Paste the new wording, the criterion, or your reasoning."]
+};
+</script>
+
+<script>
+(function(){
+  const $=(s,r=document)=>r.querySelector(s);
+  const stateEl=$("#state");
+  let STATE;
+  try{ STATE=JSON.parse(stateEl.textContent)||{}; }catch(e){ STATE={}; }
+  STATE.responses=STATE.responses||{};
+  STATE.versions=STATE.versions||{};   // {taskId:{v:2,at,by,answers,rows,responses}}
+
+  const LS="blender-proposal-revisions/v1";
+  // Local draft wins only where it is newer than what the page was published with.
+  try{
+    const raw=localStorage.getItem(LS);
+    if(raw){
+      const d=JSON.parse(raw);
+      if(d&&d.responses){
+        for(const k in d.responses){
+          const local=d.responses[k], pub=STATE.responses[k];
+          if(!pub || (local.at||0) >= (pub.at||0)) STATE.responses[k]=local;
+        }
+      }
+      if(d&&d.versions){
+        for(const k in d.versions){
+          const local=d.versions[k], pub=STATE.versions[k];
+          if(!pub || (local.at||0) >= (pub.at||0)) STATE.versions[k]=local;
+        }
+      }
+    }
+  }catch(e){}
+
+  
+  const IDKEY="blender-proposal-revisions/who";
+  let me=null;                       // {name, tasks:[ids], rev:bool}
+  let visible=[];                    // the TASKS this person may see
+  let current=null;
+  let artifactApi=null, canPublish=false, downloadsApi=null;
+
+  let ALL=[];
+  function rebuildIndex(){
+    ALL=[]; TASKS.forEach(t=>t.sections.forEach(([,items])=>items.forEach(
+      i=>ALL.push({task:t.id,id:i[0],sev:i[1]}))));
+  }
+
+  function signIn(identity){
+    me=identity;
+    visible=TASKS.filter(t=>identity.tasks.indexOf(t.id)>-1);
+    current=visible.length?visible[0].id:null;
+    document.body.classList.add("signed-in");
+    const w=document.getElementById("whoami"); w.hidden=false;
+    document.getElementById("who-name").textContent=identity.name;
+    document.getElementById("who-role").textContent=identity.rev
+      ? "reviewer \u00b7 all "+TASKS.length+" proposals"
+      : (visible.length>1? visible.length+" proposals":"1 proposal");
+
+    renderRail(); renderTask();
+  }
+  const answered=r=>!!(r&&(r.status==="edited"||r.status==="rejected"));
+  const viewV={};                                   // {taskId:'v1'|'v2'} which version is on screen
+  const hasV2=id=>!!(STATE.versions&&STATE.versions[id]);
+  const showingV1=id=>hasV2(id)&&viewV[id]==="v1";
+  // the gate is per proposal: the comments on the one you are looking at
+  const curItems=()=>ALL.filter(i=>i.task===current);
+  const outstanding=()=>curItems().filter(i=>!answered(STATE.responses[i.id]));
+  function refreshSaveGate(){
+    const btn=$("#btn-save"); if(!btn) return;
+    const items=curItems(), left=outstanding().length, done=items.length-left;
+    btn.disabled=false;                                  // never a gate - saving is always allowed
+    btn.title=left? "Saves now; "+left+" comment"+(left>1?"s":"")+" would still be open"
+                  : "Save this proposal as v2";
+    btn.textContent="Save responses";
+  }
+
+  // Saving with comments still open asks first, and says how many.
+  function confirmSave(){
+    const items=curItems(), left=outstanding().length, done=items.length-left;
+    if(!left) return Promise.resolve(true);
+    const d=$("#cdlg");
+    $("#cdlg-note").innerHTML=
+      "You have addressed <b>"+done+" of "+items.length+"</b> comment"+(items.length>1?"s":"")+
+      " on this proposal. <b>"+left+"</b> still "+(left>1?"have":"has")+
+      " no edit or rejection recorded."+
+      "<br><br>Saving now stamps this as v2 with those "+left+" left open. You can keep editing and save again afterwards.";
+    return new Promise(res=>{
+      const done_=v=>{ $("#cdlg-ok").onclick=null; $("#cdlg-cancel").onclick=null;
+                       d.removeEventListener("cancel",esc); d.close(); res(v); };
+      const esc=()=>done_(false);
+      $("#cdlg-ok").onclick=()=>done_(true);
+      $("#cdlg-cancel").onclick=()=>done_(false);
+      d.addEventListener("cancel",esc);
+      d.showModal();
+    });
+  }
+  function markDirty(){ const el=$("#saveline"); if(el&&canPublish) el.textContent="Unsaved changes."; }
+
+  function saveLocal(){
+    try{ localStorage.setItem(LS,JSON.stringify({responses:STATE.responses,versions:STATE.versions})); }catch(e){}
+  }
+
+  function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+  function renderRail(){
+    const el=$("#tasklist"); el.innerHTML="";
+    visible.forEach(t=>{
+      const items=ALL.filter(i=>i.task===t.id);
+      const done=items.filter(i=>answered(STATE.responses[i.id])).length;
+      const openBlockers=items.filter(i=>i.sev==="blocker"&&!answered(STATE.responses[i.id])).length;
+      const b=document.createElement("button");
+      b.className="taskbtn"; b.type="button";
+      b.setAttribute("aria-current",String(t.id===current));
+      b.innerHTML='<span class="t-name">'+esc(t.name)+'</span>'+
+        '<span class="t-who">'+esc(t.who.split(" · ")[0])+'</span>'+
+        '<span class="t-meter"><span class="bar"><i style="width:'+(items.length?done/items.length*100:0)+'%"></i></span>'+
+        '<span class="t-count">'+esc(t.version||"v1")+" · "+done+"/"+items.length+(openBlockers?" · "+openBlockers+" blk":"")+'</span></span>';
+      b.onclick=()=>{current=t.id; renderRail(); renderTask(); window.scrollTo({top:0,behavior:"smooth"});};
+      el.appendChild(b);
+    });
+  }
+
+
+  // ---- answers: base text the contributor submitted, plus wording accepted from review ----
+  function akey(task,field){ return "answer:"+task+":"+field; }
+  function getAns(task,field){
+    const rec=STATE.responses[akey(task,field)];
+    const base=(rec&&typeof rec.text==="string") ? rec.text : ((ANSWERS[task]||{})[field]||"");
+    const ins=(rec&&Array.isArray(rec.ins)) ? rec.ins : [];
+    return {base,ins};
+  }
+  function setAns(task,field,base,ins){
+    STATE.responses[akey(task,field)]={text:base,ins:ins,at:Date.now(),by:me&&me.name};
+    saveLocal(); markDirty();
+  }
+  function fullAns(task,field){
+    const a=getAns(task,field);
+    return [a.base].concat(a.ins.map(x=>x.text)).join("\n\n");
+  }
+  function applyWording(task,field,id,text){
+    const a=getAns(task,field);
+    if(a.ins.some(x=>x.id===id)) return;
+    setAns(task,field,a.base,a.ins.concat([{id:id,text:text}]));
+  }
+  function removeWording(task,field,id){
+    const a=getAns(task,field);
+    setAns(task,field,a.base,a.ins.filter(x=>x.id!==id));
+  }
+
+
+  // ---- rubric arithmetic: parse each line's weight and total it ----
+  function parseRubric(text){
+    const items=[]; let bad=0;
+    String(text||"").split(/\n+/).forEach(line=>{
+      const l=line.trim();
+      if(!l) return;
+      if(/^total\s*[:=]/i.test(l)) return;                 // the author's own stated total
+      let m=l.match(/^(?:\d+\.\s*)?(\d+(?:\.\d+)?)\s*(?:points?|pts?)\b/i)   // "10 points", "1.10 points"
+         || l.match(/^(0\.\d+)\s*[—–-]/)                                      // "0.05 —"
+         || l.match(/^(\d+(?:\.\d+)?)\s*[—–-]\s/);                            // "8 — ..."
+      if(m) items.push(parseFloat(m[1])); else bad++;
+    });
+    const fractional = items.length>0 && items.every(v=>v<=1);
+    const raw = items.reduce((a,b)=>a+b,0);
+    const total = fractional ? raw*100 : raw;
+    return {items:items, count:items.length, total:Math.round(total*100)/100, fractional:fractional, unparsed:bad};
+  }
+  function rubricBadge(text){
+    const r=parseRubric(text);
+    if(!r.count) return '<div class="tally-bar is-off">No weighted line items found — each item needs a leading point value.</div>';
+    const diff=Math.round((r.total-100)*100)/100;
+    const state = diff===0 ? "is-ok" : "is-off";
+    const verdict = diff===0 ? "adds up to 100" :
+      (diff>0 ? diff+" over 100" : Math.abs(diff)+" under 100");
+    return '<div class="tally-bar '+state+'">'+
+      '<span class="tb-n">'+r.total+'</span><span class="tb-of">/ 100</span>'+
+      '<span class="tb-txt">'+r.count+' line item'+(r.count>1?'s':'')+' · '+verdict+
+      (r.fractional?' · weights written as fractions of 1.00':'')+
+      (r.unparsed?' · '+r.unparsed+' line'+(r.unparsed>1?'s':'')+' with no point value':'')+
+      '</span></div>';
+  }
+
+
+  // ---- rubric as rows: a point value and the reasoning that earns it ----
+  function splitRubric(text){
+    const rows=[];
+    String(text||"").split(/\n+/).forEach(line=>{
+      const l=line.trim(); if(!l) return;
+      if(/^total\s*[:=]/i.test(l)) return;
+      let m=l.match(/^(?:\d+\.\s*)?(\d+(?:\.\d+)?)\s*(?:points?|pts?)\s*[-—–:]?\s*(.*)$/i)
+         || l.match(/^(0\.\d+)\s*[—–-]\s*(.*)$/)
+         || l.match(/^(\d+(?:\.\d+)?)\s*[—–-]\s+(.*)$/);
+      if(m) rows.push({p:m[1],t:(m[2]||"").trim()});
+      else rows.push({p:"",t:l});
+    });
+    return rows;
+  }
+  function rkey(task){ return "rubricrows:"+task; }
+  function getRows(task){
+    const rec=STATE.responses[rkey(task)];
+    if(rec&&Array.isArray(rec.rows)) return rec.rows;
+    return splitRubric((ANSWERS[task]||{}).rubric||"");
+  }
+  function setRows(task,rows){
+    STATE.responses[rkey(task)]={rows:rows,at:Date.now(),by:me&&me.name};
+    saveLocal(); markDirty();
+  }
+  function rowsTotal(rows){
+    const vals=rows.map(r=>parseFloat(r.p)).filter(v=>!isNaN(v));
+    const fractional = vals.length>0 && vals.every(v=>v<=1);
+    const raw=vals.reduce((a,b)=>a+b,0);
+    return {total:Math.round((fractional?raw*100:raw)*100)/100, count:rows.length,
+            valued:vals.length, fractional:fractional};
+  }
+  function rubricText(task){
+    return getRows(task).map(r=>(r.p?r.p+" — ":"")+r.t).join("\n");
+  }
+  function totalBar(task){
+    const r=rowsTotal(getRows(task));
+    const diff=Math.round((r.total-100)*100)/100;
+    const ok=(diff===0);
+    const missing=r.count-r.valued;
+    return '<div class="tally-bar '+(ok?"is-ok":"is-off")+'">'+
+      '<span class="tb-n">'+r.total+'</span><span class="tb-of">/ 100</span>'+
+      '<span class="tb-txt">'+r.count+' line item'+(r.count===1?'':'s')+' · '+
+      (ok?'adds up to 100':(diff>0? diff+' over':Math.abs(diff)+' under'))+
+      (r.fractional?' · written as fractions of 1.00':'')+
+      (missing?' · '+missing+' item'+(missing>1?'s':'')+' with no point value':'')+
+      '</span></div>';
+  }
+  function addRow(task,points,text,fromReview){
+    const rows=getRows(task).slice();
+    rows.push({p:points||"",t:text,ins:!!fromReview});
+    setRows(task,rows);
+  }
+  function pointsIn(text,fractional){
+    let m=String(text).match(/\((\d+(?:\.\d+)?)\s*(?:pts?|points?)\)/i) || String(text).match(/\((0\.\d+)\)/);
+    if(!m) m=String(text).match(/\b(0\.\d{2})\b/);
+    if(!m) return "";
+    const v=parseFloat(m[1]);
+    if(fractional && v>1) return String(Math.round(v)/100);
+    if(!fractional && v<=1) return String(Math.round(v*100));
+    return m[1];
+  }
+
+  // ---- review anchors: the phrases a comment is pointing at inside the answer ----
+  const FIELD_TYPE={}; FORM.forEach(a=>{FIELD_TYPE[a[0]]=a[3];});
+  const reEsc=s=>String(s).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  const anchorRe=a=>new RegExp(reEsc(a).replace(/\s+/g,"\\s+"),"gi");
+
+  function anchorsFor(id,html,act){
+    if(Array.isArray(window.ANCHORS&&ANCHORS[id])&&ANCHORS[id].length) return ANCHORS[id];
+    const out=[],seen=new Set();
+    const push=s=>{
+      s=String(s).replace(/<[^>]+>/g,"")
+        .replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"')
+        .replace(/\s+/g," ").replace(/^\.{3}\s*/,"").replace(/\s*\.{3}$/,"").trim();
+      if(s.length<4||s.length>160) return;
+      const k=s.toLowerCase(); if(seen.has(k)) return; seen.add(k); out.push(s);
+    };
+    String(html||"").replace(/<(i|b|code)\b[^>]*>([\s\S]*?)<\/\1>/gi,(m,t,inner)=>{push(inner);return m;});
+    String(html||"").replace(/"([^"]{4,160})"/g,(m,inner)=>{push(inner);return m;});
+    if(act&&act.kind==="text"&&act.suggest){
+      const m=String(act.suggest).match(/replace\s+"([^"]{6,220})"\s+with/i);
+      if(m) push(m[1]);
+    }
+    return out;
+  }
+
+  function markUp(raw,anchors){
+    const brk=s=>esc(s).replace(/\n/g,"<br>");
+    const hits=[];
+    (anchors||[]).forEach(a=>{
+      const re=anchorRe(a); let m;
+      while((m=re.exec(raw))){ hits.push([m.index,m.index+m[0].length]); if(m.index===re.lastIndex) re.lastIndex++; }
+    });
+    if(!hits.length) return brk(raw);
+    hits.sort((x,y)=>x[0]-y[0]||y[1]-x[1]);
+    const merged=[];
+    hits.forEach(x=>{ const last=merged[merged.length-1];
+      if(last&&x[0]<=last[1]) last[1]=Math.max(last[1],x[1]); else merged.push(x.slice()); });
+    let out="",pos=0;
+    merged.forEach(([s,e])=>{ out+=brk(raw.slice(pos,s))+'<mark class="hl">'+brk(raw.slice(s,e))+'</mark>'; pos=e; });
+    return out+brk(raw.slice(pos));
+  }
+
+  function paintAnswer(el,text,anchors){
+    const paras=String(text||"").split(/\n{2,}/).filter(x=>x.trim().length);
+    el.innerHTML = paras.length ? paras.map(x=>'<p>'+markUp(x,anchors)+'</p>').join("") : '<p><br></p>';
+  }
+  function readEditable(el){
+    return el.innerText.replace(/\u00a0/g," ").replace(/[ \t]+\n/g,"\n").replace(/\n{3,}/g,"\n\n").trim();
+  }
+  function caretInto(node){
+    try{
+      const sel=getSelection(),rg=document.createRange();
+      rg.selectNodeContents(node); sel.removeAllRanges(); sel.addRange(rg);
+      node.scrollIntoView({block:"center",behavior:"smooth"});
+    }catch(e){}
+  }
+
+
+  function fieldOf(secTitle,id){ return ITEM_FIELD[id] || SEC_FIELD[secTitle] || "workflow"; }
+
+  // A column only becomes scrollable when its content genuinely exceeds the viewport cap.
+  const SCROLL_CAP=()=>window.innerHeight-104;
+  function syncScrollCaps(){
+    const wide=window.innerWidth>1180, cap=SCROLL_CAP();
+    document.querySelectorAll(".q-col").forEach(col=>{
+      col.classList.remove("needs-scroll");                 // measure at natural height
+      if(wide && col.scrollHeight>cap) col.classList.add("needs-scroll");
+    });
+  }
+  let capTmr=null;
+  window.addEventListener("resize",()=>{ clearTimeout(capTmr); capTmr=setTimeout(syncScrollCaps,120); });
+
+
+  function renderTask(){
+    const app=$("#app"); app.innerHTML="";
+    const t=TASKS.find(x=>x.id===current); if(!t) return;
+    const A=ANSWERS[t.id]||{};
+
+    // findings bucketed by the form question they belong to
+    const byField={};
+    t.sections.forEach(([title,items])=>items.forEach(it=>{
+      const f=fieldOf(title,it[0]); (byField[f]=byField[f]||[]).push(it);
+    }));
+
+    const V2=hasV2(t.id)?STATE.versions[t.id]:null;
+    if(V2&&!viewV[t.id]) viewV[t.id]="v2";
+    const ro=showingV1(t.id);                       // v1 is the submitted record: read-only
+    const shownV=V2?(viewV[t.id]||"v2"):(t.version||"v1");
+
+    const head=document.createElement("div"); head.className="taskhead";
+    head.innerHTML='<h2>'+esc(t.name)+' <span class="vtag">'+esc(shownV)+'</span></h2>'+
+      '<p class="byline">'+esc(t.who)+' · submitted 26 Aug 2026'+
+        (V2?' · v2 saved '+new Date(V2.at).toLocaleDateString()+' by '+esc(V2.by||"contributor"):'')+'</p>'+
+      (V2?'<div class="vrow">'+
+        '<div class="vswitch">'+
+          '<button type="button" class="vbtn" data-v="v1" aria-pressed="'+(viewV[t.id]==="v1")+'">v1 · as submitted</button>'+
+          '<button type="button" class="vbtn" data-v="v2" aria-pressed="'+(viewV[t.id]==="v2")+'">v2 · revised</button>'+
+        '</div>'+
+        '<button type="button" class="btn btn-rerun" id="btn-rerun">Rerun validation</button>'+
+      '</div>':'')+
+      '<div class="verdicts">'+t.verdicts.map(([k,v])=>'<span class="vchip v-'+v+'" title="'+esc(k+' — '+(SKILL_INFO[k]||""))+'">'+esc(SKILL_SHORT[k]||k)+' <b>'+esc(v)+'</b></span>').join("")+'</div>'+
+      (V2&&viewV[t.id]==="v2"?'<p class="vnote">Verdict chips above are from the v1 pass. Rerun validation to score v2.</p>':'')+
+      (ro?'<p class="vnote">Showing the original submission. Switch to v2 to keep editing.</p>':'');
+    app.appendChild(head);
+    head.querySelectorAll(".vbtn").forEach(b=>b.onclick=()=>{ viewV[t.id]=b.dataset.v; renderTask(); });
+    const rerunBtn=head.querySelector("#btn-rerun");
+    if(rerunBtn) rerunBtn.onclick=()=>openRevalidation(t);
+
+    FORM.forEach(([key,question,help,type])=>{
+      const items=byField[key]||[];
+      const val=A[key];
+      const isEmpty=!val || (Array.isArray(val)&&!val.length);
+      if(isEmpty && !items.length && type!=="choice") return;      // nothing submitted, nothing to say
+
+      const q=document.createElement("section");
+      q.className="q"+(items.length?" has-notes":"");
+      let answerHTML;
+      if(type==="files"){
+        answerHTML='<span class="ans-note">Uploaded with your submission — '+(val||[]).length+' file'+((val||[]).length>1?'s':'')+'</span>'+
+          '<ul class="filelist">'+(val||[]).map(f=>'<li><span class="tick">\u2713</span>'+esc(f)+'</li>').join("")+'</ul>';
+      }else if(type==="choice"){
+        answerHTML= val ? '<p class="ans-choice">'+esc(val)+'</p>'
+                        : '<p class="ans-missing">Not visible in the form export — please restate it.</p>';
+      }else if(type==="short"){
+        answerHTML='<div class="ans-edit-area ans-short" contenteditable="'+(ro?"false":"true")+'" role="textbox" data-field="'+key+'"></div>';
+      }else if(key==="rubric"){
+        const rows=ro? splitRubric((ANSWERS[t.id]||{}).rubric||"") : getRows(t.id);
+        answerHTML='<div class="rubric" data-task="'+t.id+'">'+
+          '<div class="rhead"><span>#</span><span>Points</span><span>Reasoning — what earns them</span><span></span></div>'+
+          rows.map((r,i)=>
+            '<div class="rrow'+(r.ins?' from-review':'')+'" data-i="'+i+'">'+
+              '<span class="rnum">'+(i+1)+'</span>'+
+              '<div class="ptcell"><input class="pt" inputmode="decimal" '+(ro?"disabled ":"")+'value="'+esc(r.p||"")+'" aria-label="Points for item '+(i+1)+'"></div>'+
+              '<textarea class="crit" rows="2" '+(ro?"readonly ":"")+'aria-label="Reasoning for item '+(i+1)+'">'+esc(r.t||"")+'</textarea>'+
+              (ro?'<span></span>':'<button type="button" class="rdel" title="Remove this line item" aria-label="Remove line item '+(i+1)+'">×</button>')+
+            '</div>').join("")+
+          (ro?'':'<button type="button" class="radd">+ Add line item</button>')+
+        '</div>';
+      }else{
+        answerHTML='<div class="ans-edit-area" contenteditable="'+(ro?"false":"true")+'" role="textbox" data-field="'+key+'"></div>';
+      }
+      const editable=(type==="long"||type==="short");
+      q.innerHTML=
+        '<div class="q-col">'+
+        '<div class="q-head"><h3>'+esc(question)+'</h3>'+(help?'<p class="q-help">'+esc(help)+'</p>':'')+'</div>'+
+        '<div class="q-answer'+(editable?" is-editable":"")+'">'+
+          (editable?'<div class="ans-bar"><span class="ans-lab">'+(ro?"As submitted in v1":"Your answer — edit it directly")+'</span>'+
+            (items.length&&!ro?'<span class="ans-hint">Click a comment to highlight where it applies</span>':'')+'</div>':'')+
+          answerHTML+
+        '</div>'+
+        (key==="rubric"?'<div class="tally-wrap">'+totalBar(t.id)+'</div>':'')+
+        '</div>'+
+        (items.length?'<div class="notes"><span class="notes-lab">'+items.length+' comment'+(items.length>1?'s':'')+'</span></div>':'');
+
+      // the answer surface is live: type straight into it, no edit gate
+      const editEl=q.querySelector(".ans-edit-area");
+      if(editEl) paintAnswer(editEl, ro? String((ANSWERS[t.id]||{})[key]||"") : fullAns(t.id,key), []);
+      if(ro&&editEl) editEl.classList.add("is-ro");
+      if(key==="rubric"){
+        const box=q.querySelector(".rubric");
+        const wrapT=q.querySelector(".tally-wrap");
+        const commit=()=>{
+          const rows=[...box.querySelectorAll(".rrow")].map(r=>({
+            p:r.querySelector(".pt").value.trim(),
+            t:r.querySelector(".crit").value,
+            ins:r.classList.contains("from-review")
+          }));
+          setRows(t.id,rows);
+          wrapT.innerHTML=totalBar(t.id);
+        };
+        const grow=el=>{ el.style.height="auto"; el.style.height=(el.scrollHeight+2)+"px"; };
+        box.querySelectorAll(".crit").forEach(el=>{
+          el.addEventListener("input",()=>grow(el));
+        });
+        // size after the rows are in the document, or scrollHeight reads as empty.
+        // rAF is paused in a hidden tab, so a timer backs it up.
+        const growAll=()=>box.querySelectorAll(".crit").forEach(grow);
+        requestAnimationFrame(growAll); setTimeout(growAll,80);
+        if(!ro) box.querySelectorAll(".pt,.crit").forEach(el=>el.addEventListener("input",commit));
+        box.querySelectorAll(".rdel").forEach(btn=>btn.onclick=()=>{
+          const rows=getRows(t.id).slice();
+          rows.splice(parseInt(btn.closest(".rrow").dataset.i,10),1);
+          setRows(t.id,rows); renderTask();
+        });
+        const addBtn=box.querySelector(".radd");
+        if(addBtn) addBtn.onclick=()=>{ addRow(t.id,"",""); renderTask(); };
+      }
+      // ---- live editing + the highlight the reviewer comments point at ----
+      const rubricBox=q.querySelector(".rubric");
+      const armed=new Set();                       // comments waiting on this field's next edit
+      let liveAnchors=[];
+
+      function commitAnswer(){
+        if(!editEl) return;
+        const txt=readEditable(editEl);
+        if(txt===fullAns(t.id,key)) return;
+        setAns(t.id,key,txt,[]);
+        settleArmed();
+        syncScrollCaps();
+      }
+      function settleArmed(){
+        if(!armed.size) return;
+        const base=String((ANSWERS[t.id]||{})[key]||"").trim();
+        const now =(key==="rubric"? rubricText(t.id) : fullAns(t.id,key)).trim();
+        if(now===base) return;
+        armed.forEach(id=>{
+          const cur=STATE.responses[id]||{};
+          if(cur.status) return;
+          cur.status="edited"; cur.at=Date.now(); cur.by=me&&me.name;
+          STATE.responses[id]=cur;
+          const el=q.querySelector('.note[data-id="'+id+'"]'); if(el) el.__paint&&el.__paint();
+        });
+        armed.clear(); saveLocal(); markDirty(); renderRail(); renderTally();
+      }
+      if(editEl&&!ro){
+        let tmr=null;
+        editEl.addEventListener("input",()=>{ clearTimeout(tmr); tmr=setTimeout(commitAnswer,400); });
+        editEl.addEventListener("blur",()=>{
+          clearTimeout(tmr); commitAnswer();
+          paintAnswer(editEl,fullAns(t.id,key),liveAnchors);
+        });
+      }
+
+      function clearHighlight(){
+        liveAnchors=[];
+        if(editEl && document.activeElement!==editEl) paintAnswer(editEl,fullAns(t.id,key),[]);
+        if(rubricBox) rubricBox.querySelectorAll(".rrow").forEach(r=>r.classList.remove("is-hl"));
+        q.classList.remove("q-flash");
+        q.querySelectorAll(".note").forEach(n=>n.classList.remove("is-active"));
+        q.querySelectorAll(".no-anchor").forEach(e=>e.hidden=true);
+      }
+      // returns how many places in the answer the comment could be pinned to
+      function showHighlight(anchors){
+        clearHighlight();
+        let found=0;
+        if(rubricBox){
+          rubricBox.querySelectorAll(".rrow").forEach(r=>{
+            const txt=(r.querySelector(".crit").value||"").toLowerCase();
+            const hit=anchors.some(a=>txt.indexOf(a.toLowerCase())>=0);
+            r.classList.toggle("is-hl",hit); if(hit) found++;
+          });
+        }else if(editEl){
+          const raw=fullAns(t.id,key);
+          liveAnchors=anchors.filter(a=>anchorRe(a).test(raw));
+          found=liveAnchors.length;
+          paintAnswer(editEl,raw,liveAnchors);
+        }
+        if(!found) q.classList.add("q-flash");
+        return found;
+      }
+      function focusAnswer(){
+        if(rubricBox){
+          const row=rubricBox.querySelector(".rrow.is-hl")||rubricBox.querySelector(".rrow");
+          if(row){ const ta2=row.querySelector(".crit"); ta2.focus(); ta2.setSelectionRange(ta2.value.length,ta2.value.length); row.scrollIntoView({block:"center",behavior:"smooth"}); }
+          return;
+        }
+        if(!editEl) return;
+        editEl.focus();
+        const m=editEl.querySelector("mark.hl");
+        if(m) caretInto(m); else editEl.scrollIntoView({block:"center",behavior:"smooth"});
+      }
+      if(rubricBox&&!ro) rubricBox.querySelectorAll(".pt,.crit").forEach(el=>el.addEventListener("input",settleArmed));
+
+      const notes=q.querySelector(".notes");
+      const canEditAnswer=editable||key==="rubric";
+      items.forEach(([id,sev,html,act])=>{
+        const kind=(act&&act.kind)||"none";
+        const anchors=anchorsFor(id,html,act);
+        const n=document.createElement("article");
+        n.className="note"; n.dataset.id=id;
+        let sug="";
+        if(kind==="text") sug='<blockquote class="sug">'+esc(act.suggest)+'</blockquote>';
+        else if(kind==="file"){
+          const isNew=(act.mode==="new");
+          sug='<blockquote class="sug"><b>'+(isNew?"New file needed.":"Replacement file needed.")+'</b> '+esc(act.need)+
+              '<br><span class="sug-meta">'+esc(act.formats)+' — '+
+              (isNew? "nothing matching this was uploaded with your submission."
+                    : "the original is already uploaded; this asks for a cleared replacement.")+
+              ' Attach it to your resubmission; this page cannot receive files.</span></blockquote>';
+        }
+        else if(kind==="author") sug='<blockquote class="sug"><b>Rewrite this answer yourself.</b> We are not drafting it for you. Include:<ul>'+act.must.map(m=>'<li>'+esc(m)+'</li>').join("")+'</ul></blockquote>';
+        else if(kind==="confirm") sug='<blockquote class="sug">'+esc(act.need)+'</blockquote>';
+
+        // a rubric fix phrased as a brand-new line item can be added as a row, then edited freely
+        const newCrit = (key==="rubric"&&kind==="text")
+          ? String(act.suggest).match(/^New criterion\s*\(\s*([\d.]+)\s*(?:points?|pts?)?\s*\)\s*:\s*([\s\S]+)$/i)
+          : null;
+        const primaryLab = newCrit ? "Add this line item" : canEditAnswer ? "Edit answer" : "Mark as handled";
+        n.innerHTML=
+          '<div class="note-top"><span class="avatar">R</span>'+
+            '<div class="note-meta"><span class="note-who">Reviewer</span>'+
+            '<span class="sev sev-'+sev+'">'+(sev==="blocker"?"Blocker":sev==="should"?"Fix":"Optional")+'</span>'+
+            (SKILL_OF[id]?'<span class="skill" title="'+esc(SKILL_OF[id]+' — '+(SKILL_INFO[SKILL_OF[id]]||""))+'">'+esc(SKILL_SHORT[SKILL_OF[id]]||SKILL_OF[id])+'</span>':'')+
+            '</div></div>'+
+          '<p class="note-body">'+html+'</p>'+ sug +
+          '<p class="no-anchor" hidden>No single phrase to point at — this one is about the answer as a whole.</p>'+
+          '<div class="note-acts">'+
+            '<button type="button" class="st primary act-edit">'+primaryLab+'</button>'+
+            '<button type="button" class="st danger act-reject">Reject</button>'+
+          '</div>'+
+          '<div class="rej-box" hidden>'+
+            '<textarea class="reason" placeholder="Why are you rejecting this? The reviewer sees this instead of a change."></textarea>'+
+            '<div class="rej-row">'+
+              '<button type="button" class="st danger act-confirm" disabled>Confirm rejection</button>'+
+              '<button type="button" class="linkbtn act-cancel">Cancel</button>'+
+              '<span class="rej-hint">An explanation is required.</span>'+
+            '</div>'+
+          '</div>'+
+          '<div class="settled" hidden></div>';
+
+        const acts=n.querySelector(".note-acts");
+        const rejBox=n.querySelector(".rej-box");
+        const reason=n.querySelector("textarea.reason");
+        const confirmBtn=n.querySelector(".act-confirm");
+        const settled=n.querySelector(".settled");
+        const noAnchor=n.querySelector(".no-anchor");
+
+        function paint(){
+          const r=STATE.responses[id]||{};
+          n.classList.toggle("is-settled",!!r.status);
+          n.classList.toggle("is-edited",r.status==="edited");
+          n.classList.toggle("is-rejected",r.status==="rejected");
+          const done=!!r.status;
+          acts.hidden=done||ro;
+          if(done) rejBox.hidden=true;
+          settled.hidden=!done;
+          if(r.status==="edited"){
+            settled.innerHTML='<span class="tag ok">'+(canEditAnswer?"Answered by your edit":"Marked as handled")+'</span>'+
+              '<button type="button" class="linkbtn act-undo">Undo</button>';
+          }else if(r.status==="rejected"){
+            settled.innerHTML='<span class="tag no">Rejected</span><span>'+esc(r.reason||"")+'</span>'+
+              '<button type="button" class="linkbtn act-undo">Undo</button>';
+          }
+          const u=settled.querySelector(".act-undo");
+          if(u) u.onclick=(ev)=>{
+            ev.stopPropagation();
+            const cur=STATE.responses[id]||{};
+            delete cur.status; delete cur.reason; cur.at=Date.now();
+            STATE.responses[id]=cur; saveLocal(); markDirty();
+            paint(); renderRail(); renderTally();
+          };
+        }
+        n.__paint=paint;
+
+        function point(){
+          const found=showHighlight(anchors);
+          n.classList.add("is-active");
+          noAnchor.hidden=(found>0);
+          q.scrollIntoView({block:"nearest",behavior:"smooth"});
+          return found;
+        }
+        // clicking anywhere on the comment shows where in the answer it lands
+        n.addEventListener("click",ev=>{ if(ev.target.closest("button,textarea")) return; point(); });
+
+        n.querySelector(".act-edit").onclick=ev=>{
+          ev.stopPropagation();
+          if(newCrit){
+            const text=newCrit[2].trim();
+            if(!getRows(t.id).some(x=>String(x.t).trim()===text)) addRow(t.id,newCrit[1],text,true);
+            const cur=STATE.responses[id]||{};
+            cur.status="edited"; cur.at=Date.now(); cur.by=me&&me.name;
+            STATE.responses[id]=cur; saveLocal(); markDirty();
+            renderTask(); renderRail();
+            const row=[...document.querySelectorAll(".rubric .rrow.from-review")].pop();
+            if(row){ const ta2=row.querySelector(".crit"); ta2.focus(); ta2.setSelectionRange(ta2.value.length,ta2.value.length);
+                     row.scrollIntoView({block:"center",behavior:"smooth"}); }
+            return;
+          }
+          if(!canEditAnswer){                       // uploads / choice answers: nothing to type into
+            const cur=STATE.responses[id]||{};
+            cur.status="edited"; cur.at=Date.now(); cur.by=me&&me.name;
+            STATE.responses[id]=cur; saveLocal(); markDirty();
+            paint(); renderRail(); renderTally(); return;
+          }
+          point(); armed.add(id); focusAnswer();
+        };
+        n.querySelector(".act-reject").onclick=ev=>{
+          ev.stopPropagation();
+          point(); rejBox.hidden=false; reason.focus();
+        };
+        n.querySelector(".act-cancel").onclick=ev=>{ ev.stopPropagation(); rejBox.hidden=true; };
+        reason.addEventListener("input",()=>{ confirmBtn.disabled=reason.value.trim().length<10; });
+        confirmBtn.onclick=ev=>{
+          ev.stopPropagation();
+          const why=reason.value.trim();
+          if(why.length<10){ confirmBtn.disabled=true; return; }
+          const cur=STATE.responses[id]||{};
+          cur.status="rejected"; cur.reason=why; cur.note=why;
+          cur.at=Date.now(); cur.by=me&&me.name;
+          STATE.responses[id]=cur; armed.delete(id);
+          saveLocal(); markDirty(); paint(); renderRail(); renderTally();
+        };
+
+        const r0=STATE.responses[id]||{};
+        if(r0.status==="rejected") reason.value=r0.reason||r0.note||"";
+        confirmBtn.disabled=reason.value.trim().length<10;
+        paint();
+        notes.appendChild(n);
+      });
+      app.appendChild(q);
+    });
+    renderTally();
+    syncScrollCaps();
+    requestAnimationFrame(syncScrollCaps);   // fonts/reflow can change the height after first paint
+  }
+
+  function renderTally(){
+    const items=ALL.filter(i=>i.task===current);
+    const done=items.filter(i=>answered(STATE.responses[i.id])).length;
+    const openB=items.filter(i=>i.sev==="blocker"&&!answered(STATE.responses[i.id])).length;
+    $("#tally-done").innerHTML='<b>'+done+'</b> of '+items.length+' comments answered';
+    $("#tally-block").innerHTML= openB? '<b>'+openB+'</b> blocker'+(openB>1?'s':'')+' left' : 'all blockers addressed';
+    $("#tally-block").classList.toggle("warn",openB>0);
+    refreshSaveGate();
+  }
+
+  function summaryText(){
+    const out=[];
+    visible.forEach(t=>{
+      const A=ANSWERS[t.id]||{};
+      const byField={};
+      t.sections.forEach(([title,items])=>items.forEach(it=>{
+        const f=fieldOf(title,it[0]); (byField[f]=byField[f]||[]).push(it);
+      }));
+      out.push("="+"=".repeat(70));
+      out.push(t.name.toUpperCase()+"  —  "+t.who);
+      out.push("="+"=".repeat(70),"");
+      FORM.forEach(([key,question,help,type])=>{
+        const items=byField[key]||[];
+        const orig=A[key];
+        const isLong=(type==="long"||type==="short");
+        let cur;
+        if(key==="rubric"){
+          const rt=rowsTotal(getRows(t.id));
+          cur=rubricText(t.id)+"\n\nTOTAL: "+rt.total+" / 100"+(rt.total===100?" (adds up)":"  <-- DOES NOT ADD UP");
+        }else{
+          cur=isLong? fullAns(t.id,key) : (Array.isArray(orig)? (orig||[]).join(", ") : (orig||""));
+        }
+        const changed=isLong && cur.trim()!==String(orig||"").trim();
+        if(!cur && !items.length) return;
+        out.push("## "+question+(changed?"   [REVISED]":""));
+        if(cur) out.push(cur,"");
+        items.forEach(([id,sev,html,act])=>{
+          const r=STATE.responses[id]; if(!r||(!r.status&&!(r.note||"").trim())) return;
+          const tag = r.status==="rejected" ? "REJECTED"
+                    : r.status==="edited"   ? "ADDRESSED BY EDIT" : "OPEN";
+          out.push("   > ["+tag+"] ("+(SKILL_OF[id]||"review")+") "+html.replace(/<[^>]+>/g,""));
+          if(r.status==="rejected") out.push("     reason: "+String(r.reason||r.note||"").trim().replace(/\n/g,"\n             "));
+          else if((r.note||"").trim()) out.push("     reply: "+r.note.trim().replace(/\n/g,"\n            "));
+        });
+        out.push("");
+      });
+    });
+    return out.length? out.join("\n") : "Nothing recorded yet.";
+  }
+
+  // ---- persistence ----
+  function stamp(msg){ $("#saveline").textContent=msg; }
+
+  function buildDocument(){
+    const clone=document.documentElement.cloneNode(true);
+    const s=clone.querySelector("#state");
+    s.textContent=JSON.stringify({responses:STATE.responses,versions:STATE.versions,savedAt:new Date().toISOString(),savedBy:null});
+    const app=clone.querySelector("#app"); if(app) app.innerHTML="";           // rendered from data on load
+    const tl=clone.querySelector("#tasklist"); if(tl) tl.innerHTML="";
+    const dlg=clone.querySelector("#dlg"); if(dlg){ dlg.removeAttribute("open"); dlg.querySelector("#dlg-text").textContent=""; }
+    clone.querySelectorAll("#tally-done,#tally-block,#saveline,#who-name,#who-role,#gate-err").forEach(n=>n.textContent="");
+    const b=clone.querySelector("body")||clone; b.classList&&b.classList.remove("signed-in");
+    const w=clone.querySelector("#whoami"); if(w) w.setAttribute("hidden","");
+    const gi=clone.querySelector("#gate-email"); if(gi) gi.removeAttribute("value");
+    return "<!doctype html>\n"+clone.outerHTML;
+  }
+
+  // Saving stamps the current answers as v2 — the revision that answers the review.
+  function makeV2(){
+    const only=TASKS.filter(t=>t.id===current);
+    only.forEach(t=>{
+      const answers={};
+      FORM.forEach(([key,q,hlp,type])=>{ if(type==="long"||type==="short") answers[key]=fullAns(t.id,key); });
+      answers.uploads=(ANSWERS[t.id]||{}).uploads||[];
+      const responses={};
+      ALL.filter(i=>i.task===t.id).forEach(i=>{ responses[i.id]=STATE.responses[i.id]||{}; });
+      STATE.versions[t.id]={v:2,at:Date.now(),by:(me&&me.name)||"contributor",
+                            answers:answers,rows:getRows(t.id),responses:responses};
+      viewV[t.id]="v2";
+    });
+    saveLocal();
+  }
+
+  $("#btn-save").onclick=async()=>{
+    if(!await confirmSave()) return;
+    makeV2();
+    renderRail(); renderTask();
+    if(!canPublish){
+      stamp("v2 saved in this browser — this view cannot write back to the page.");
+      openDialog("Saving is not available here","Your v2 revision is kept in this browser, but this view cannot write back to the page. Copy it below and send it to the reviewer.");
+      return;
+    }
+    const btn=$("#btn-save"); btn.disabled=true; stamp("Saving v2…");
+    try{
+      const res=await pushState();
+      stamp("v2 saved "+new Date(res.savedAt).toLocaleTimeString()+" — the reviewer can see it.");
+    }catch(err){
+      const code=(err&&err.code)||"";
+      if(code==="conflict"){ stamp("Someone else saved first. Reload, then re-enter this change."); }
+      else{ stamp("Could not save. Your v2 is still stored in this browser — use Copy."); canPublish=false; }
+      refreshSaveGate();
+    }
+  };
+
+  // ---- v2 revalidation hand-off ----
+  const SKILL_FILES=["prompt-artifact-consistency","prompt-rubric-consistency","prompt-rubric-coverage",
+                     "required-files-manifest","task-difficulty-estimate","task-edit-suggestions"];
+  function revalidationBundle(t){
+    const V=STATE.versions[t.id]; if(!V) return "";
+    const A=V.answers||{}, o=[];
+    o.push("REVALIDATION REQUEST — "+t.name+" — v2");
+    o.push("Submitter: "+t.who);
+    o.push("Revised by "+(V.by||"contributor")+" on "+new Date(V.at).toLocaleString());
+    o.push("");
+    o.push("Run all six local validation skills against the v2 content below, then write");
+    o.push("one file per skill into the task's validation/v2/ directory:");
+    SKILL_FILES.forEach((s,i)=>o.push("  "+(i+1)+". prompts/local_visora_"+s+".md"));
+    o.push("");
+    o.push("================ instruction/v2.md ================");
+    o.push("");
+    o.push("## Task title:");o.push("");o.push(A.title||"");o.push("");
+    o.push("## Short summary of the end-to-end workflow, broken into its main stages");o.push("");
+    o.push(A.workflow||"");o.push("");
+    o.push("## Mid-Task Injection");o.push("");o.push(A.injection||"");o.push("");
+    o.push("================ rubric/v2.md ================");o.push("");o.push("## Rubric");o.push("");
+    (V.rows||[]).forEach(r=>o.push((r.p?r.p+" points - ":"")+r.t));
+    const rt=rowsTotal(V.rows||[]);
+    o.push("");o.push("TOTAL: "+rt.total+" / 100"+(rt.total===100?" (adds up)":"  <-- DOES NOT ADD UP"));
+    o.push("");
+    o.push("================ inputs/v2.md ================");o.push("");
+    o.push(A.inputs||"");
+    if((A.uploads||[]).length){ o.push("");o.push("Staged files: "+A.uploads.join(", ")); }
+    if((A.anything||"").trim()){ o.push("");o.push("Anything else reviewers should know:");o.push(A.anything); }
+    o.push("");
+    o.push("================ how each v1 comment was answered ================");o.push("");
+    ALL.filter(i=>i.task===t.id).forEach(i=>{
+      const r=(V.responses||{})[i.id]||{};
+      const label=r.status==="rejected"?"REJECTED":r.status==="edited"?"ADDRESSED BY EDIT":"OPEN";
+      o.push("  ["+label+"] "+i.id+" ("+(SKILL_OF[i.id]||"review")+", "+i.sev+")");
+      if(r.status==="rejected") o.push("      reason: "+String(r.reason||r.note||"").replace(/\n/g," "));
+    });
+    return o.join("\n");
+  }
+  function openRevalidation(t){
+    const text=revalidationBundle(t);
+    $("#dlg-title").textContent="Rerun validation on "+t.name+" v2";
+    $("#dlg-note").textContent="This page cannot run the validation skills itself — they are prompt files that need Claude and the task's staged inputs. This is the complete v2 bundle to run them against: copy or download it, then run the six skills listed at the top.";
+    $("#dlg-text").value=text;
+    const dl=$("#dlg-download");
+    if(dl){
+      dl.hidden=!downloadsApi;
+      dl.onclick=async()=>{
+        if(!downloadsApi) return;
+        try{
+          await downloadsApi.save({filename:t.id+"_v2_revalidation.md",data:text});
+          dl.textContent="Sent"; setTimeout(()=>dl.textContent="Download bundle",1600);
+        }catch(e){ dl.textContent="Declined"; setTimeout(()=>dl.textContent="Download bundle",1600); }
+      };
+    }
+    $("#dlg").showModal();
+  }
+
+  function openDialog(title,note){
+    $("#dlg-title").textContent=title; $("#dlg-note").textContent=note;
+    $("#dlg-text").value=summaryText();
+    const dl=$("#dlg-download"); if(dl) dl.hidden=true;
+    $("#dlg").showModal();
+  }
+  $("#btn-copy").onclick=()=>openDialog("Your revised proposal","Your answers with the accepted wording merged in, plus your replies. Copy this and send it back.");
+  $("#dlg-close").onclick=()=>$("#dlg").close();
+  $("#dlg-copy").onclick=async()=>{
+    const t=$("#dlg-text"); t.select();
+    try{ await navigator.clipboard.writeText(t.value); $("#dlg-copy").textContent="Copied"; setTimeout(()=>$("#dlg-copy").textContent="Copy to clipboard",1600);}catch(e){ document.execCommand&&document.execCommand("copy"); }
+  };
+
+
+  stamp(STATE.savedAt? "Last saved "+new Date(STATE.savedAt).toLocaleString() : "Kept in this browser until you save.");
+
+
+  // ---- backend: this page holds no proposal data until the API sends it ----
+  const API=(window.PROPOSAL_API||"").trim();
+  const TOKEN=new URLSearchParams(location.search).get("k")||"";
+  // Apps Script exposes one endpoint and routes on ?path=.
+  const apiUrl=p=> API+"?path="+p+"&k="+encodeURIComponent(TOKEN);
+  let saveTimer=null;
+
+  function gateFail(title,msg){
+    const h=document.getElementById("gate-h"), m=document.getElementById("gate-msg");
+    if(h) h.textContent=title;
+    if(m) m.textContent=msg;
+  }
+
+  async function boot(){
+    if(!API || API.indexOf("PASTE_")===0){
+      gateFail("Not configured yet",
+        "site/config.js still has the placeholder URL. Paste the Apps Script /exec URL into it and commit.");
+      return;
+    }
+    if(!TOKEN){
+      gateFail("You need your own link",
+        "This page opens with a personal link. Ask the reviewer to send you yours — it ends in ?k=…");
+      return;
+    }
+    let data;
+    try{
+      const r=await fetch(apiUrl("session"),{cache:"no-store"});
+      if(!r.ok && r.status!==403) throw new Error("http "+r.status);
+      data=await r.json();
+      if(r.status===403 || (data&&data.error)){
+        gateFail("That link is not recognised",
+          "The link may have been revoked or mistyped. Ask the reviewer for a fresh one.");
+        return;
+      }
+    }catch(e){
+      gateFail("Could not reach the server",
+        "Check your connection and reload. If it keeps failing, tell the reviewer.");
+      return;
+    }
+    TASKS=data.tasks||[];
+    ANSWERS={}; SKILL_OF={};
+    TASKS.forEach(t=>{ ANSWERS[t.id]=t.answers||{}; Object.assign(SKILL_OF,t.skills||{}); });
+    rebuildIndex();
+    STATE.responses=(data.state&&data.state.responses)||{};
+    STATE.versions =(data.state&&data.state.versions )||{};
+    STATE.savedAt  =(data.state&&data.state.savedAt )||null;
+    canPublish=true;                                   // the API is the store
+    signIn({name:(data.who&&data.who.name)||"You", tasks:TASKS.map(t=>t.id),
+            rev:!!(data.who&&data.who.rev)});
+    stamp(STATE.savedAt? "Last saved "+new Date(STATE.savedAt).toLocaleString()
+                       : "Nothing saved yet.");
+  }
+
+  async function pushState(){
+    const r=await fetch(apiUrl("state"),{
+      method:"POST",
+      // text/plain keeps this a "simple" request: no CORS preflight, which
+      // Apps Script cannot answer. Both backends parse the body themselves.
+      headers:{"content-type":"text/plain;charset=utf-8"},
+      body:JSON.stringify({responses:STATE.responses,versions:STATE.versions})
+    });
+    if(!r.ok) throw new Error("http "+r.status);
+    const out=await r.json();
+    if(out&&out.error) throw new Error(out.error);   // Apps Script answers 200 with an error body
+    return out;
+  }
+  boot();
+})();
+</script>
+
+</body>
+</html>
