@@ -302,6 +302,9 @@ mark.hl{
 .rej-box textarea{min-height:66px; font-size:13.5px}
 .rej-row{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
 .rej-hint{font-size:11.5px; color:var(--blocker)}
+#btn-comments{border-color:var(--should); color:var(--should)}
+#btn-comments:hover{background:var(--should-wash)}
+#btn-comments[disabled]{opacity:.5; cursor:not-allowed}
 .settled{
   display:flex; flex-wrap:wrap; gap:6px; align-items:baseline;
   font-size:13px; line-height:1.5; color:var(--ink-2);
@@ -647,6 +650,7 @@ dialog::backdrop{background:rgba(10,14,20,.55)}
     <span class="n warn" id="tally-block"></span>
     <span class="saveline" id="saveline"></span>
   </div>
+  <button class="btn" id="btn-comments" hidden>Publish comment changes</button>
   <button class="btn" id="btn-copy">Copy my responses</button>
   <button class="btn btn-primary" id="btn-save">Save responses</button>
 </div>
@@ -791,12 +795,17 @@ const FIELD={
   // needs no change to the Apps Script. It cannot ride in responses instead - a new
   // comment's id is not in the gist-built index, so ownerOf_() would drop it.
   const REVIEW={};                                  // taskId -> {edits, removed, added}
-  const REVIEW_KEY="__review";
+  const REVIEW_KEY="__review";                      // legacy: overlays saved into a version
+  let SERVER_COMMENTS={};                           // whatever path=comments handed back
+  const REVIEW_DIRTY=new Set();                     // tasks with unpublished comment changes
   const blankReview=()=>({edits:{},removed:[],added:[]});
   function reviewOf(id){
     if(!REVIEW[id]){
-      const list=histOf(id), v=list.length? list[list.length-1] : null;
-      const stored=v&&v.answers&&v.answers[REVIEW_KEY];
+      let stored=SERVER_COMMENTS[id];
+      if(!stored){                                  // overlays written before the comments tab
+        const list=histOf(id), v=list.length? list[list.length-1] : null;
+        stored=v&&v.answers&&v.answers[REVIEW_KEY];
+      }
       REVIEW[id]= stored ? {edits:stored.edits||{},removed:(stored.removed||[]).slice(),
                             added:(stored.added||[]).slice()}
                          : blankReview();
@@ -825,9 +834,18 @@ const FIELD={
   // ALL drives the tally and the rail meter, so it must be rebuilt whenever the set
   // of effective comments changes. rebuildIndex() only exists in the built page -
   // build_site.py splices it in where the console has a fixed ALL - hence the guard.
+  // Comment changes are the reviewer's own flow: they do not touch the answers and
+  // must not ride on Save responses, which stamps a revision of the proposal.
   function markReview(){
+    if(current) REVIEW_DIRTY.add(current);
     if(typeof rebuildIndex==="function") rebuildIndex();
-    saveLocal(); markDirty();
+    saveLocal(); refreshCommentGate();
+  }
+  function refreshCommentGate(){
+    const b=document.getElementById("btn-comments"); if(!b) return;
+    const n=REVIEW_DIRTY.size;
+    b.hidden=!(isRev()&&n);
+    b.textContent="Publish comment change"+(n>1?"s":"")+(n?" ("+n+")":"");
   }
   function safeComment(src){
     return esc(String(src||"")).replace(/&lt;(\/?)(i|b|code|em|strong)&gt;/g,"<$1$2>");
@@ -935,7 +953,15 @@ const FIELD={
   function markDirty(){ const el=$("#saveline"); if(el&&canPublish) el.textContent="Unsaved changes."; }
 
   function saveLocal(){
-    try{ localStorage.setItem(LS,JSON.stringify({responses:STATE.responses,versions:STATE.versions})); }catch(e){}
+    // Unpublished comment changes ride along, so a reload does not lose a reviewer's
+    // work before they press Publish.
+    try{ localStorage.setItem(LS,JSON.stringify({responses:STATE.responses,versions:STATE.versions,
+         review:REVIEW,reviewDirty:[...REVIEW_DIRTY]})); }catch(e){}
+  }
+  function restoreReview(d){
+    if(!d) return;
+    if(d.review) for(const k in d.review) REVIEW[k]=d.review[k];
+    (d.reviewDirty||[]).forEach(id=>REVIEW_DIRTY.add(id));
   }
 
   function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
@@ -1874,7 +1900,6 @@ const FIELD={
       const answers={};
       FORM.forEach(([key,q,hlp,type])=>{ if(type==="long"||type==="short") answers[key]=fullAns(t.id,key); });
       answers.uploads=(ANSWERS[t.id]||{}).uploads||[];
-      answers[REVIEW_KEY]=reviewOf(t.id);          // the reviewer's changes to the comments
       answers[REV_SAVE_KEY]=isRev();               // survives the round trip; a bare field does not
       const responses={};
       ALL.filter(i=>i.task===t.id).forEach(i=>{ responses[i.id]=STATE.responses[i.id]||{}; });
@@ -2036,7 +2061,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="ec474c13ed12";
+  const BUILD="561d0ecefe26";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
@@ -2203,13 +2228,19 @@ const FIELD={
     STATE.responses=(data.state&&data.state.responses)||{};
     STATE.versions =(data.state&&data.state.versions )||{};
     STATE.savedAt  =(data.state&&data.state.savedAt )||null;
-    // After the versions land, never before: the reviewer overlay is read out of the
-    // newest version and memoised, so indexing first cached an empty one and every
-    // withdrawal, edit and added comment silently failed to apply.
+    SERVER_COMMENTS=data.comments||{};
+    // A reviewer's unpublished comment changes are kept locally; restore them over
+    // what the server sent so pressing reload does not silently discard them.
+    try{ restoreReview(JSON.parse(localStorage.getItem(LS)||"null")); }catch(e){}
+    // After the versions and the comment overlay land, never before: reviewOf()
+    // memoises, so indexing first cached an empty overlay and every withdrawal, edit
+    // and added comment silently failed to apply.
     rebuildIndex();
     canPublish=true;                                   // the API is the store
     signIn({name:(data.who&&data.who.name)||"You", tasks:TASKS.map(t=>t.id),
             rev:!!(data.who&&data.who.rev)});
+    // After signIn, never before: the gate asks isRev(), and `me` is set in there.
+    refreshCommentGate();      // restored-but-unpublished changes must show their button
     stamp(STATE.savedAt? "Last saved "+new Date(STATE.savedAt).toLocaleString()
                        : "Nothing saved yet.");
   }
@@ -2230,6 +2261,17 @@ const FIELD={
       const v=Array.isArray(list)? list[list.length-1] : list;
       if(v) out[id]={answers:v.answers||{}, rows:v.rows||[]};
     });
+    return out;
+  }
+  async function postComments(payload){
+    const r=await fetch(apiUrl("comments"),{
+      method:"POST",
+      headers:{"content-type":"text/plain;charset=utf-8"},
+      body:JSON.stringify(payload)
+    });
+    if(!r.ok) throw new Error("http "+r.status);
+    const out=await r.json();
+    if(out&&out.error) throw new Error(out.error);
     return out;
   }
   async function postState(){
@@ -2253,6 +2295,23 @@ const FIELD={
   document.addEventListener("visibilitychange",()=>{
     if(document.visibilityState==="visible") checkFresh();
   });
+  const cbtn=document.getElementById("btn-comments");
+  if(cbtn) cbtn.onclick=async()=>{
+    if(!REVIEW_DIRTY.size) return;
+    const payload={};
+    REVIEW_DIRTY.forEach(id=>{ payload[id]=reviewOf(id); });
+    cbtn.disabled=true; const was=cbtn.textContent; cbtn.textContent="Publishing…";
+    try{
+      await postComments(payload);
+      Object.keys(payload).forEach(id=>{ SERVER_COMMENTS[id]=payload[id]; });
+      REVIEW_DIRTY.clear();
+      stamp("Comment changes published — contributors see them now.");
+      refreshCommentGate();
+    }catch(err){
+      cbtn.textContent=was;
+      stamp("Could not publish the comment changes ("+(err&&err.message||"failed")+"). They are still in this browser.");
+    }finally{ cbtn.disabled=false; }
+  };
   boot();
 })();
 </script>

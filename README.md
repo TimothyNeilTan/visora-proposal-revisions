@@ -14,7 +14,7 @@ site/
   data/tokens.json    token -> person + proposals    -> loaded into the Sheet, gitignored
   config.js           the deployed /exec URL — edit after deploying, no rebuild
   version.json        the current build stamp (built) — how a stale page notices
-  appsscript/Code.gs  the API (Google Apps Script)
+  appsscript/Code.gs  the API (Google Apps Script) — redeploy after editing
   devserver.py        local stand-in for the backend, for testing
 ```
 
@@ -38,6 +38,22 @@ predates a deploy keeps seeing the old build's error messages, which describe
 problems the current backend no longer has. `config.js` is re-run uncached at
 boot for the same reason: it changes without a rebuild, so a stamped query
 would not budge it.
+
+### Reviewer comment edits need a redeployed script
+
+`appsscript/Code.gs` gained a `comments` tab and a `path=comments` endpoint, so a
+reviewer rewriting, withdrawing or adding a comment writes one row per task **in
+place** rather than appending to `versions`. Editing a comment is not a revision
+of the proposal, and it no longer rides on **Save responses**.
+
+Until the script is redeployed the page still loads, but **Publish comment
+changes** fails — the endpoint answers `not_found`. To pick it up:
+
+1. open the Apps Script editor and paste in the current `appsscript/Code.gs`
+2. **Deploy → Manage deployments → edit → Version: New version**
+
+The `comments` tab creates itself with its header on first write, so `setup()`
+does not have to be re-run.
 
 ## Deploy
 

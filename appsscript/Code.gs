@@ -25,6 +25,10 @@
  *   tasks    : id    | json
  *   versions : taskId | n | savedAt | savedBy | answers(json) | rows(json) | responses(json)
  *   state    : legacy single-revision store, read once for anything saved before
+ *   comments : taskId | json | savedAt | savedBy - the reviewer's changes to the
+ *              findings (rewritten text, withdrawn ones, ones they added). Written
+ *              in place, one row per task, so editing a comment is not a revision
+ *              of the proposal and does not append to `versions`.
  *
  * Setup:
  *   1. run setup()      - creates the three tabs
@@ -58,6 +62,7 @@ function setup() {
   sheet_('versions').getRange(1, 1, 1, 7).setValues([
     ['taskId', 'n', 'savedAt', 'savedBy', 'answers', 'rows', 'responses']]);
   sheet_('state').getRange(1, 1, 1, 5).setValues([['taskId', 'savedAt', 'savedBy', 'responses', 'version']]);
+  sheet_('comments').getRange(1, 1, 1, 4).setValues([['taskId', 'json', 'savedAt', 'savedBy']]);
 }
 
 /**
@@ -235,6 +240,17 @@ function versionsByTask_() {
   return out;
 }
 
+/** The reviewer's overlay on the findings, one row per task, newest write wins. */
+function commentsByTask_() {
+  var out = {}, r = rows_('comments');
+  for (var i = 0; i < r.length; i++) {
+    var tid = String(r[i][0] || '');
+    if (!tid) continue;
+    try { out[tid] = JSON.parse(r[i][1] || '{}'); } catch (err) { out[tid] = {}; }
+  }
+  return out;
+}
+
 function stateRows_() {
   var out = {}, r = rows_('state');
   for (var i = 0; i < r.length; i++) {
@@ -303,7 +319,12 @@ function doGet(e) {
     for (var k in newest.responses) responses[k] = newest.responses[k];
     if (newest.at && (!savedAt || newest.at > savedAt)) { savedAt = newest.at; savedBy = newest.by; }
   }
+  var allC = commentsByTask_(), comments = {};
+  for (var c = 0; c < who.tasks.length; c++) {
+    if (allC[who.tasks[c]]) comments[who.tasks[c]] = allC[who.tasks[c]];
+  }
   return out_({ who: { name: who.name, rev: who.rev }, session: auth.session || null, tasks: tasks,
+                comments: comments,
                 state: { responses: responses, versions: versions, savedAt: savedAt, savedBy: savedBy } });
 }
 
@@ -311,6 +332,38 @@ function doPost(e) {
   var auth = authed_(e);
   if (auth.error) return out_({ error: auth.error });
   var who = auth.who;
+  // Editing a comment is the reviewer's business and not a revision of the proposal,
+  // so it writes its own row in place rather than appending to `versions`.
+  if (e.parameter.path === 'comments') {
+    if (!who.rev) return out_({ error: 'not_allowed' });
+    var cbody;
+    try { cbody = JSON.parse(e.postData.contents); } catch (err) { return out_({ error: 'bad_json' }); }
+    var clock = LockService.getScriptLock();
+    try { clock.waitLock(20000); } catch (err) { return out_({ error: 'busy' }); }
+    try {
+      var csh = sheet_('comments');
+      // sheet_() creates the tab but not its header, and rows_() always skips row 1.
+      // Without this the first write would land in row 1 and then be read as a header.
+      if (csh.getLastRow() === 0) {
+        csh.getRange(1, 1, 1, 4).setValues([['taskId', 'json', 'savedAt', 'savedBy']]);
+      }
+      var crows = csh.getDataRange().getValues();
+      var cat = new Date().toISOString(), wrote = [];
+      for (var tid in cbody) {
+        var json = JSON.stringify(cbody[tid] || {});
+        if (json.length > 45000) return out_({ error: 'too_large', task: tid });
+        var at = 0;
+        for (var i = 1; i < crows.length; i++) {
+          if (String(crows[i][0]) === tid) { at = i + 1; break; }
+        }
+        if (at) csh.getRange(at, 1, 1, 4).setValues([[tid, json, cat, who.name]]);
+        else    csh.appendRow([tid, json, cat, who.name]);
+        wrote.push(tid);
+      }
+      return out_({ ok: true, savedAt: cat, savedBy: who.name, tasks: wrote });
+    } finally { clock.releaseLock(); }
+  }
+
   if (e.parameter.path !== 'state') return out_({ error: 'not_found' });
 
   var body;

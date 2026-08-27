@@ -10,6 +10,11 @@ HERE=os.path.dirname(os.path.abspath(__file__))
 TASKS=json.load(open(os.path.join(HERE,"data/tasks.json")))
 TOKENS=json.load(open(os.path.join(HERE,"data/people.json")))
 STATE_DIR=os.path.join(HERE,".devstate"); os.makedirs(STATE_DIR,exist_ok=True)
+COMMENTS=os.path.join(STATE_DIR,"_comments.json")
+def load_comments():
+    try: return json.load(open(COMMENTS))
+    except Exception: return {}
+def save_comments(d): json.dump(d,open(COMMENTS,"w"))
 CODES={}; SESSIONS={}          # dev only: in the real backend these are Cache/Properties
 
 class H(http.server.SimpleHTTPRequestHandler):
@@ -75,13 +80,31 @@ class H(http.server.SimpleHTTPRequestHandler):
                 sess=_s.token_hex(20); SESSIONS[sess]=tok; CODES.pop(tok,None)
                 issued=sess
             else: issued=None
+            allc=load_comments()
+            comments={t:allc[t] for t in who["tasks"] if t in allc}
             return self._json({"who":{"name":who["name"],"rev":who["rev"]},"session":issued,
                                "tasks":[TASKS[t] for t in who["tasks"] if t in TASKS],
+                               "comments":comments,
                                "state":{"responses":responses,"versions":versions,
                                         "savedAt":savedAt,"savedBy":savedBy}})
         return super().do_GET()
     def do_POST(self):
         route,dialect=self._route()
+        if route=="comments":
+            tok,who=self._who()
+            if isinstance(who,str) or not who:
+                return self._json({"error":who if isinstance(who,str) else "unknown_email"},200)
+            if not who["rev"]: return self._json({"error":"not_allowed"},200)
+            body=json.loads(self.rfile.read(int(self.headers["content-length"]) or 0) or b"{}")
+            import datetime
+            store=load_comments(); at=datetime.datetime.now(datetime.timezone.utc).isoformat()
+            wrote=[]
+            for tid,ov in body.items():
+                if len(json.dumps(ov or {}))>45000:
+                    return self._json({"error":"too_large","task":tid},200)
+                store[tid]=ov or {}; wrote.append(tid)          # written in place
+            save_comments(store)
+            return self._json({"ok":True,"savedAt":at,"savedBy":who["name"],"tasks":wrote})
         if route=="state":
             tok,who=self._who()
             if isinstance(who,str): return self._json({"error":who}, 200 if dialect=="apps" else 403)
