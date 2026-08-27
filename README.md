@@ -13,6 +13,7 @@ site/
   data/tasks.json     all 8 proposals + comments     -> loaded into the Sheet
   data/tokens.json    token -> person + proposals    -> loaded into the Sheet, gitignored
   config.js           the deployed /exec URL — edit after deploying, no rebuild
+  version.json        the current build stamp (built) — how a stale page notices
   appsscript/Code.gs  the API (Google Apps Script)
   devserver.py        local stand-in for the backend, for testing
 ```
@@ -27,6 +28,16 @@ including a 309 MB TIFF that GitHub will reject outright.
 ```
 python3 ../build_site.py
 ```
+
+`version.json` is written by the same command and **must be published with
+`index.html`**. The page carries its own content hash and compares it against
+`version.json` (fetched `no-store`) on load and whenever the tab is refocused;
+a mismatch means the browser is running a cached copy, so it re-fetches under
+`?v=<stamp>` — a URL the cache has never seen. Without this, anyone whose tab
+predates a deploy keeps seeing the old build's error messages, which describe
+problems the current backend no longer has. `config.js` is re-run uncached at
+boot for the same reason: it changes without a rebuild, so a stamped query
+would not budge it.
 
 ## Deploy
 

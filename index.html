@@ -1501,7 +1501,9 @@ const FIELD={
 
 
   // ---- backend: this page holds no proposal data until the API sends it ----
-  const API=(window.PROPOSAL_API||"").trim();
+  let API=(window.PROPOSAL_API||"").trim();
+  const BUILD="84887ef7c00a";
+  const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
   let EMAIL="", SESSION="", CODE="";
@@ -1521,7 +1523,44 @@ const FIELD={
     if(m) m.textContent=msg;
   }
 
+  // ---- staying current -------------------------------------------------------
+  // Two ways to end up running yesterday's page: a cached copy the browser has
+  // not revalidated, or a tab left open across a deploy. Both show stale error
+  // text for problems that no longer exist, so ask the server what the current
+  // build is and, if this is not it, re-fetch under a URL the cache has never
+  // seen. version.json is tiny and always fetched no-store.
+  async function currentBuild(){
+    try{
+      const r=await fetch("version.json?cb="+Date.now(),{cache:"no-store"});
+      if(!r.ok) return null;
+      const v=await r.json();
+      return (v&&v.build)||null;
+    }catch(e){ return null; }        // offline or blocked: run what we have
+  }
+  async function checkFresh(){
+    const live=await currentBuild();
+    if(!live||live===BUILD) return false;
+    let tried=""; try{ tried=sessionStorage.getItem(FRESHKEY)||""; }catch(e){}
+    if(tried===live) return false;   // already reloaded for this build; do not loop
+    try{ sessionStorage.setItem(FRESHKEY,live); }catch(e){}
+    location.replace(location.pathname+"?v="+encodeURIComponent(live));
+    return true;
+  }
+  // config.js is edited by hand after a deploy and never rebuilt, so a stamped
+  // query would not budge it: re-run it uncached and take whatever URL it sets.
+  function reloadConfig(){
+    return new Promise(res=>{
+      const s=document.createElement("script");
+      s.src="config.js?cb="+Date.now();
+      s.onload=s.onerror=()=>res();
+      document.head.appendChild(s);
+    });
+  }
+
   async function boot(){
+    if(await checkFresh()) return;                 // a newer build is on its way
+    await reloadConfig();
+    API=(window.PROPOSAL_API||"").trim();
     if(!API || API.indexOf("PASTE_")===0){
       gateFail("Not configured yet",
         "site/config.js still has the placeholder URL. Paste the Apps Script /exec URL into it and commit.");
@@ -1660,6 +1699,10 @@ const FIELD={
     if(out&&out.error) throw new Error(out.error);   // Apps Script answers 200 with an error body
     return out;
   }
+  // A long-open tab never re-boots, so re-check when it comes back into view.
+  document.addEventListener("visibilitychange",()=>{
+    if(document.visibilityState==="visible") checkFresh();
+  });
   boot();
 })();
 </script>
