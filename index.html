@@ -316,6 +316,28 @@ mark.hl{
 .note.is-rejected{border-color:var(--blocker)}
 .note.is-edited{border-color:var(--nice)}
 .note.is-waiting{border-color:var(--should)}
+.note.is-withdrawn{opacity:.6; border-style:dashed}
+.rev-tools{margin-left:auto; display:flex; gap:6px}
+.rev-tools .linkbtn{font-size:11.5px}
+.rev-box{display:flex; flex-direction:column; gap:6px; margin-top:7px}
+.rev-box textarea{
+  font:inherit; font-size:13px; line-height:1.5; color:var(--ink);
+  background:var(--sunk); border:1px solid var(--line-2); border-radius:7px; padding:7px 9px;
+  resize:vertical; min-height:76px;
+}
+.rev-box select{
+  font-family:Archivo,sans-serif; font-size:12px; color:var(--ink);
+  background:var(--sunk); border:1px solid var(--line-2); border-radius:6px; padding:4px 7px;
+}
+.rev-row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+.rev-hint{font-size:11px; color:var(--ink-3)}
+.note-withdrawn-lab{font-family:Archivo,sans-serif; font-size:11.5px; font-weight:600; color:var(--ink-3)}
+.addnote{
+  font-family:Archivo,sans-serif; font-size:12px; font-weight:600; cursor:pointer;
+  background:var(--panel); color:var(--accent-ink); border:1px dashed var(--line-2);
+  border-radius:8px; padding:7px 10px; width:100%;
+}
+.addnote:hover{border-color:var(--accent); background:var(--accent-wash)}
 .no-anchor{font-size:11.5px; color:var(--ink-3); font-style:italic}
 
 /* ---------- comment column ---------- */
@@ -716,8 +738,11 @@ const FIELD={
 
   let ALL=[];
   function rebuildIndex(){
-    ALL=[]; TASKS.forEach(t=>t.sections.forEach(([,items])=>items.forEach(
-      i=>ALL.push({task:t.id,id:i[0],sev:i[1]}))));
+    // itemsFor() applies the reviewer overlay, so a withdrawn comment stops
+    // counting against the contributor and a new one starts.
+    ALL=[];
+    TASKS.forEach(t=>itemsFor(t,false).forEach(
+      x=>ALL.push({task:t.id,id:x.item[0],sev:x.item[1]})));
   }
 
   function signIn(identity){
@@ -760,6 +785,59 @@ const FIELD={
     // is what showed an untouched answer as removed in its entirety.
     return String((ANSWERS[id]||{})[field]||"");
   }
+  // The comments come from the gist and the gist has no write path, so a reviewer's
+  // changes to them live as an overlay. It rides in the version's answers blob under
+  // a reserved key: the backend stores and returns that column verbatim, so this
+  // needs no change to the Apps Script. It cannot ride in responses instead - a new
+  // comment's id is not in the gist-built index, so ownerOf_() would drop it.
+  const REVIEW={};                                  // taskId -> {edits, removed, added}
+  const REVIEW_KEY="__review";
+  const blankReview=()=>({edits:{},removed:[],added:[]});
+  function reviewOf(id){
+    if(!REVIEW[id]){
+      const list=histOf(id), v=list.length? list[list.length-1] : null;
+      const stored=v&&v.answers&&v.answers[REVIEW_KEY];
+      REVIEW[id]= stored ? {edits:stored.edits||{},removed:(stored.removed||[]).slice(),
+                            added:(stored.added||[]).slice()}
+                         : blankReview();
+    }
+    return REVIEW[id];
+  }
+  const isRemoved=(taskId,cid)=>reviewOf(taskId).removed.indexOf(cid)>=0;
+  // The effective comment list for a task: gist items with any reviewer edit applied,
+  // withdrawn ones dropped, and anything the reviewer wrote appended. A reviewer keeps
+  // seeing what they withdrew, flagged, so they can put it back.
+  function itemsFor(t,keepRemoved){
+    const R=reviewOf(t.id), out=[];
+    (t.sections||[]).forEach(([title,items])=>items.forEach(it=>{
+      if(!keepRemoved && R.removed.indexOf(it[0])>=0) return;
+      const e=R.edits[it[0]];
+      const item = e ? [it[0], e.sev||it[1], e.html||it[2], it[3]] : it;
+      out.push({sec:title, item:item, added:false, gone:R.removed.indexOf(it[0])>=0});
+    }));
+    R.added.forEach(a=>{
+      if(!keepRemoved && R.removed.indexOf(a.id)>=0) return;
+      out.push({sec:a.field, item:[a.id,a.sev,a.html,null], added:true,
+                gone:R.removed.indexOf(a.id)>=0, field:a.field});
+    });
+    return out;
+  }
+  // ALL drives the tally and the rail meter, so it must be rebuilt whenever the set
+  // of effective comments changes. rebuildIndex() only exists in the built page -
+  // build_site.py splices it in where the console has a fixed ALL - hence the guard.
+  function markReview(){
+    if(typeof rebuildIndex==="function") rebuildIndex();
+    saveLocal(); markDirty();
+  }
+  function safeComment(src){
+    return esc(String(src||"")).replace(/&lt;(\/?)(i|b|code|em|strong)&gt;/g,"<$1$2>");
+  }
+  function newCommentId(taskId){
+    const R=reviewOf(taskId); let n=R.added.length+1, id;
+    do{ id="rc"+n; n++; }while(R.added.some(a=>a.id===id));
+    return id;
+  }
+
   function verRows(id,n){
     const v=verAt(id,n); if(!v) return [];
     if(Array.isArray(v.rows)&&v.rows.length) return v.rows;
@@ -774,11 +852,19 @@ const FIELD={
   // the record of what they changed: locked, comments cleared, before/after on show.
   // Reviewers are never frozen - they keep the live console on every proposal.
   const isRev=()=>!!(me&&me.rev);
-  const frozen=id=>!isRev()&&hasV2(id);
+  // Only a save by the contributor freezes their proposal. A reviewer's save - which
+  // is how comment edits persist - would otherwise lock the contributor out of
+  // answering the very comments the reviewer had just written. Iterations saved
+  // before this flag existed carry no rev, and were contributors' own.
+  const REV_SAVE_KEY="__savedByReviewer";
+  const savedByRev=v=>!!(v&&v.answers&&v.answers[REV_SAVE_KEY]);
+  const contribSaved=id=>histOf(id).some(v=>!savedByRev(v));
+  const revsOf=id=>histOf(id).filter(v=>!savedByRev(v));   // proposal revisions only
+  const frozen=id=>!isRev()&&contribSaved(id);
   // Reviewers were excluded from the diff by frozen(), which is backwards - they are
   // the ones reading for what changed. It is a toggle now, on by default past v1.
   const diffOn={};
-  const diffShown=(id,cur)=>cur!==1&&hasV2(id)&&diffOn[id]!==false;
+  const diffShown=(id,cur)=>cur!==1&&contribSaved(id)&&diffOn[id]!==false;
   // "Edit answer" arms a comment: it settles when the answer it points at actually
   // changes. Two things were wrong with keeping that in a per-field closure. It did
   // not survive renderTask() - adding a rubric row or switching version tab silently
@@ -1249,14 +1335,16 @@ const FIELD={
 
     // findings bucketed by the form question they belong to
     const byField={};
-    t.sections.forEach(([title,items])=>items.forEach(it=>{
-      const f=fieldOf(title,it[0]); (byField[f]=byField[f]||[]).push(it);
-    }));
+    itemsFor(t,isRev()).forEach(x=>{           // a reviewer keeps seeing what they withdrew
+      const f = x.added ? x.field : fieldOf(x.sec,x.item[0]);
+      (byField[f]=byField[f]||[]).push(x);
+    });
 
-    const hist=histOf(t.id), V2=hist.length?hist[hist.length-1]:null;
+    const hist=revsOf(t.id), V2=hist.length?hist[hist.length-1]:null;
     const cur=shownV(t.id);
     const FZ=frozen(t.id);                          // a contributor, after their own save
     const DIFF=diffShown(t.id,cur);                 // the before/after, not a bare iteration
+    const canReview=isRev();                        // a diff freezes the answer, not the review
     const ro=FZ||showingV1(t.id)||DIFF;             // a diff is a comparison, not an editor
     const shownLabel="v"+cur;
 
@@ -1310,7 +1398,7 @@ const FIELD={
       if(isEmpty && !items.length && type!=="choice") return;      // nothing submitted, nothing to say
 
       const q=document.createElement("section");
-      q.className="q"+(items.length?" has-notes":"");
+      q.className="q"+((items.length||canReview)?" has-notes":"");
       let answerHTML;
       if(type==="files"){
         answerHTML='<span class="ans-note">Uploaded with your submission — '+(val||[]).length+' file'+((val||[]).length>1?'s':'')+'</span>'+
@@ -1352,7 +1440,10 @@ const FIELD={
         '</div>'+
         (key==="rubric"?'<div class="tally-wrap">'+totalBar(t.id)+'</div>':'')+
         '</div>'+
-        (items.length?'<div class="notes"><span class="notes-lab">'+items.length+' comment'+(items.length>1?'s':'')+'</span></div>':'');
+        ((items.length||canReview)?'<div class="notes">'+
+          (items.length?'<span class="notes-lab">'+items.length+' comment'+(items.length>1?'s':'')+'</span>':
+                        '<span class="notes-lab">no comments</span>')+
+          '</div>':'');
 
       // the answer surface is live: type straight into it, no edit gate
       const editEl=q.querySelector(".ans-edit-area");
@@ -1479,11 +1570,16 @@ const FIELD={
 
       const notes=q.querySelector(".notes");
       const canEditAnswer=editable||key==="rubric";
-      items.forEach(([id,sev,html,act])=>{
+      items.forEach(X=>{
+        const id=X.item[0], sev=X.item[1], act=X.item[3];
+        // Anything a reviewer wrote or rewrote goes through the whitelist; the gist's
+        // own comments are authored upstream and keep their markup.
+        const edited=!!(reviewOf(t.id).edits[id]||X.added);
+        const html=edited ? safeComment(X.item[2]) : X.item[2];
         const kind=(act&&act.kind)||"none";
         const anchors=anchorsFor(id,html,act);
         const n=document.createElement("article");
-        n.className="note"; n.dataset.id=id;
+        n.className="note"+(X.gone?" is-withdrawn":""); n.dataset.id=id;
         let sug="";
         if(kind==="text") sug='<blockquote class="sug">'+esc(act.suggest)+'</blockquote>';
         else if(kind==="file"){
@@ -1507,8 +1603,29 @@ const FIELD={
             '<div class="note-meta"><span class="note-who">Reviewer</span>'+
             '<span class="sev sev-'+sev+'">'+(sev==="blocker"?"Blocker":sev==="should"?"Fix":"Optional")+'</span>'+
             (SKILL_OF[id]?'<span class="skill" title="'+esc(SKILL_OF[id]+' — '+(SKILL_INFO[SKILL_OF[id]]||""))+'">'+esc(SKILL_SHORT[SKILL_OF[id]]||SKILL_OF[id])+'</span>':'')+
-            '</div></div>'+
-          '<p class="note-body">'+html+'</p>'+ sug +
+            (X.gone?'<span class="note-withdrawn-lab">withdrawn</span>':'')+
+            '</div>'+
+            (canReview?'<span class="rev-tools">'+
+              (X.gone
+                ? '<button type="button" class="linkbtn rev-restore">Restore</button>'
+                : '<button type="button" class="linkbtn rev-edit">Edit</button>'+
+                  '<button type="button" class="linkbtn rev-remove">Remove</button>')+
+            '</span>':'')+
+          '</div>'+
+          '<p class="note-body">'+html+'</p>'+
+          (canReview?'<div class="rev-box" hidden>'+
+            '<textarea class="rev-text" aria-label="Comment text"></textarea>'+
+            '<div class="rev-row">'+
+              '<select class="rev-sev" aria-label="Severity">'+
+                '<option value="blocker">Blocker</option>'+
+                '<option value="should">Fix</option>'+
+                '<option value="nice">Optional</option>'+
+              '</select>'+
+              '<button type="button" class="st primary rev-save">Save comment</button>'+
+              '<button type="button" class="linkbtn rev-cancel">Cancel</button>'+
+              '<span class="rev-hint">&lt;i&gt;, &lt;b&gt; and &lt;code&gt; are kept; other markup is shown literally.</span>'+
+            '</div>'+
+          '</div>':'')+ sug +
           '<p class="no-anchor" hidden>No single phrase to point at — this one is about the answer as a whole.</p>'+
           '<div class="note-acts">'+
             '<button type="button" class="st primary act-edit">'+primaryLab+'</button>'+
@@ -1613,11 +1730,62 @@ const FIELD={
           saveLocal(); markDirty(); paint(); renderRail(); renderTally();
         };
 
+        if(canReview){
+          const rb=n.querySelector(".rev-box");
+          const openEditor=()=>{
+            rb.hidden=false;
+            rb.querySelector(".rev-text").value=X.item[2];
+            rb.querySelector(".rev-sev").value=sev;
+            rb.querySelector(".rev-text").focus();
+          };
+          const eb=n.querySelector(".rev-edit");
+          if(eb) eb.onclick=ev=>{ ev.stopPropagation(); openEditor(); };
+          const cb=n.querySelector(".rev-cancel");
+          if(cb) cb.onclick=ev=>{ ev.stopPropagation(); rb.hidden=true; };
+          const sb=n.querySelector(".rev-save");
+          if(sb) sb.onclick=ev=>{
+            ev.stopPropagation();
+            const R=reviewOf(t.id);
+            const txt=rb.querySelector(".rev-text").value.trim();
+            const sv=rb.querySelector(".rev-sev").value;
+            if(!txt) return;
+            const a=R.added.filter(x=>x.id===id)[0];
+            if(a){ a.html=txt; a.sev=sv; } else { R.edits[id]={html:txt,sev:sv}; }
+            markReview(); renderTask(); renderRail();
+          };
+          const rm=n.querySelector(".rev-remove");
+          if(rm) rm.onclick=ev=>{
+            ev.stopPropagation();
+            const R=reviewOf(t.id);
+            if(R.removed.indexOf(id)<0) R.removed.push(id);
+            markReview(); renderTask(); renderRail();
+          };
+          const rs=n.querySelector(".rev-restore");
+          if(rs) rs.onclick=ev=>{
+            ev.stopPropagation();
+            const R=reviewOf(t.id);
+            R.removed=R.removed.filter(x=>x!==id);
+            markReview(); renderTask(); renderRail();
+          };
+        }
+
         const r0=STATE.responses[id]||{};
         if(r0.status==="rejected") reason.value=r0.reason||r0.note||"";
         paint();
         notes.appendChild(n);
       });
+      if(canReview&&notes){
+        const add=document.createElement("button");
+        add.type="button"; add.className="addnote";
+        add.textContent="+ Add a comment on this answer";
+        add.onclick=()=>{
+          const R=reviewOf(t.id);
+          R.added.push({id:newCommentId(t.id),field:key,sev:"should",
+                        html:"New comment - click Edit to write it."});
+          markReview(); renderTask(); renderRail();
+        };
+        notes.appendChild(add);
+      }
       app.appendChild(q);
     });
     renderTally();
@@ -1706,6 +1874,8 @@ const FIELD={
       const answers={};
       FORM.forEach(([key,q,hlp,type])=>{ if(type==="long"||type==="short") answers[key]=fullAns(t.id,key); });
       answers.uploads=(ANSWERS[t.id]||{}).uploads||[];
+      answers[REVIEW_KEY]=reviewOf(t.id);          // the reviewer's changes to the comments
+      answers[REV_SAVE_KEY]=isRev();               // survives the round trip; a bare field does not
       const responses={};
       ALL.filter(i=>i.task===t.id).forEach(i=>{ responses[i.id]=STATE.responses[i.id]||{}; });
       const next=latestV(t.id)+1;
@@ -1743,28 +1913,45 @@ const FIELD={
   const SKILL_FILES=["prompt-artifact-consistency","prompt-rubric-consistency","prompt-rubric-coverage",
                      "required-files-manifest","task-difficulty-estimate","task-edit-suggestions"];
   function revalidationBundle(t){
-    const V=STATE.versions[t.id]; if(!V) return "";
-    const A=V.answers||{}, o=[];
-    o.push("REVALIDATION REQUEST — "+t.name+" — v2");
+    // STATE.versions[id] is the list of iterations. Reading .answers off the list
+    // gave undefined, so the bundle came out with an empty title, an empty workflow,
+    // no rubric rows and every comment reported OPEN. Take the newest iteration, and
+    // read its fields through verAnswer/verRows so a row saved before the postState
+    // fix still yields its text.
+    const revs=revsOf(t.id);
+    const V=revs.length ? revs[revs.length-1]
+                        : (Array.isArray(STATE.versions[t.id]) ? null : STATE.versions[t.id]);
+    if(!V) return "";
+    const n=V.v||latestV(t.id), o=[];
+    const A={
+      title:     verAnswer(t.id,n,"title"),
+      workflow:  verAnswer(t.id,n,"workflow"),
+      injection: verAnswer(t.id,n,"injection"),
+      inputs:    verAnswer(t.id,n,"inputs"),
+      anything:  verAnswer(t.id,n,"anything"),
+      uploads:   (V.answers&&V.answers.uploads)||(ANSWERS[t.id]||{}).uploads||[]
+    };
+    o.push("REVALIDATION REQUEST — "+t.name+" — v"+n);
     o.push("Submitter: "+t.who);
-    o.push("Revised by "+(V.by||"contributor")+" on "+new Date(V.at).toLocaleString());
+    o.push("Revised by "+(V.by||"contributor")+" on "+(V.at?new Date(V.at).toLocaleString():"an unrecorded date"));
     o.push("");
     o.push("Run all six local validation skills against the v2 content below, then write");
-    o.push("one file per skill into the task's validation/v2/ directory:");
+    o.push("one file per skill into the task's validation/v"+n+"/ directory:");
     SKILL_FILES.forEach((s,i)=>o.push("  "+(i+1)+". prompts/local_visora_"+s+".md"));
     o.push("");
-    o.push("================ instruction/v2.md ================");
+    o.push("================ instruction/v"+n+".md ================");
     o.push("");
     o.push("## Task title:");o.push("");o.push(A.title||"");o.push("");
     o.push("## Short summary of the end-to-end workflow, broken into its main stages");o.push("");
     o.push(A.workflow||"");o.push("");
     o.push("## Mid-Task Injection");o.push("");o.push(A.injection||"");o.push("");
-    o.push("================ rubric/v2.md ================");o.push("");o.push("## Rubric");o.push("");
-    (V.rows||[]).forEach(r=>o.push((r.p?r.p+" points - ":"")+r.t));
-    const rt=rowsTotal(V.rows||[]);
+    o.push("================ rubric/v"+n+".md ================");o.push("");o.push("## Rubric");o.push("");
+    const vrows=verRows(t.id,n);
+    vrows.forEach(r=>o.push((r.p?r.p+" points - ":"")+r.t));
+    const rt=rowsTotal(vrows);
     o.push("");o.push("TOTAL: "+rt.total+" / 100"+(rt.total===100?" (adds up)":"  <-- DOES NOT ADD UP"));
     o.push("");
-    o.push("================ inputs/v2.md ================");o.push("");
+    o.push("================ inputs/v"+n+".md ================");o.push("");
     o.push(A.inputs||"");
     if((A.uploads||[]).length){ o.push("");o.push("Staged files: "+A.uploads.join(", ")); }
     if((A.anything||"").trim()){ o.push("");o.push("Anything else reviewers should know:");o.push(A.anything); }
@@ -1778,20 +1965,53 @@ const FIELD={
     });
     return o.join("\n");
   }
+  // A plain anchor download. The old path went through the artifact runtime's
+  // downloads API, which this build never has - build_site.py strips the block that
+  // assigns it - so the button was permanently hidden and Copy was the only way out.
+  function downloadText(filename,text){
+    try{
+      const url=URL.createObjectURL(new Blob([text],{type:"text/markdown;charset=utf-8"}));
+      const a=document.createElement("a");
+      a.href=url; a.download=filename; a.style.display="none";
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },0);
+      return true;
+    }catch(e){ return false; }
+  }
+  // What to paste into Claude Code once the bundle is on disk. The skills are local
+  // prompt files that need the staged inputs, so they run there, not in this page.
+  function revalidationPrompt(t,n,filename){
+    return "Run the Visora validation skills against the revised proposal in "+
+      "~/Downloads/"+filename+".\n\n"+
+      "Skills to run, in order:\n"+
+      SKILL_FILES.map((s,i)=>"  "+(i+1)+". prompts/local_visora_"+s+".md").join("\n")+"\n\n"+
+      "The bundle carries the v"+n+" instruction, rubric and inputs, plus how each v1 "+
+      "comment was answered. Score v"+n+" on its own terms - do not carry the v1 "+
+      "verdicts forward. Write one file per skill into "+t.id+"/validation/v"+n+"/, "+
+      "then summarise which verdicts changed against v1 and why.";
+  }
   function openRevalidation(t){
     const text=revalidationBundle(t);
-    $("#dlg-title").textContent="Rerun validation on "+t.name+" v2";
-    $("#dlg-note").textContent="This page cannot run the validation skills itself — they are prompt files that need Claude and the task's staged inputs. This is the complete v2 bundle to run them against: copy or download it, then run the six skills listed at the top.";
+    const revs=revsOf(t.id);
+    const V=revs.length? revs[revs.length-1] : null;
+    const n=(V&&V.v)||latestV(t.id);
+    const filename=t.id+"_v"+n+"_revalidation.md";
+    $("#dlg-title").textContent="Rerun validation on "+t.name+" v"+n;
+    $("#dlg-note").textContent="The validation skills are local prompt files that need Claude and the task's staged inputs, so they run in Claude Code rather than in this page. Save the bundle and the prompt to run it with, then paste the prompt into Claude Code.";
     $("#dlg-text").value=text;
     const dl=$("#dlg-download");
     if(dl){
-      dl.hidden=!downloadsApi;
+      dl.hidden=false;
+      dl.textContent="Save bundle + copy prompt";
       dl.onclick=async()=>{
-        if(!downloadsApi) return;
-        try{
-          await downloadsApi.save({filename:t.id+"_v2_revalidation.md",data:text});
-          dl.textContent="Sent"; setTimeout(()=>dl.textContent="Download bundle",1600);
-        }catch(e){ dl.textContent="Declined"; setTimeout(()=>dl.textContent="Download bundle",1600); }
+        const ok=downloadText(filename,text);
+        let copied=false;
+        try{ await navigator.clipboard.writeText(revalidationPrompt(t,n,filename)); copied=true; }catch(e){}
+        dl.textContent = ok&&copied ? "Saved — prompt copied"
+                       : ok         ? "Saved — copy the prompt below"
+                                    : "Could not save the file";
+        if(!copied) $("#dlg-text").value=revalidationPrompt(t,n,filename)+"\n\n"+text;
+        setTimeout(()=>{ dl.textContent="Save bundle + copy prompt"; },2600);
       };
     }
     $("#dlg").showModal();
@@ -1816,7 +2036,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="25adf8d5e57f";
+  const BUILD="ec474c13ed12";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
@@ -1980,10 +2200,13 @@ const FIELD={
     TASKS=data.tasks||[];
     ANSWERS={}; SKILL_OF={};
     TASKS.forEach(t=>{ ANSWERS[t.id]=t.answers||{}; Object.assign(SKILL_OF,t.skills||{}); });
-    rebuildIndex();
     STATE.responses=(data.state&&data.state.responses)||{};
     STATE.versions =(data.state&&data.state.versions )||{};
     STATE.savedAt  =(data.state&&data.state.savedAt )||null;
+    // After the versions land, never before: the reviewer overlay is read out of the
+    // newest version and memoised, so indexing first cached an empty one and every
+    // withdrawal, edit and added comment silently failed to apply.
+    rebuildIndex();
     canPublish=true;                                   // the API is the store
     signIn({name:(data.who&&data.who.name)||"You", tasks:TASKS.map(t=>t.id),
             rev:!!(data.who&&data.who.rev)});
