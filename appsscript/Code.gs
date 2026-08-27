@@ -52,7 +52,7 @@ function setup() {
  */
 function loadFromDrive() {
   var tasksFile  = fileInFolder_('tasks.json');
-  var tokensFile = DriveApp.getFileById(TOKENS_FILE_ID);
+  var tokensFile = fileInFolder_('tokens.json') || DriveApp.getFileById(TOKENS_FILE_ID);
   if (!tasksFile) {
     throw new Error('Drop tasks.json into the "Proposal Revisions" folder in your Drive, then run this again.');
   }
@@ -77,10 +77,18 @@ function loadFromDrive() {
   Logger.log('loaded %s proposals and %s tokens', trows.length - 1, krows.length - 1);
 }
 
-/** Look inside the Proposal Revisions folder, so a stray same-named file elsewhere cannot be picked up. */
+/**
+ * Look inside the Proposal Revisions folder and take the NEWEST match.
+ * Drive keeps same-named uploads as separate files rather than replacing, so
+ * re-uploading tasks.json leaves several; the most recent one is the live data.
+ */
 function fileInFolder_(name) {
-  var it = DriveApp.getFolderById(FOLDER_ID).getFilesByName(name);
-  return it.hasNext() ? it.next() : null;
+  var it = DriveApp.getFolderById(FOLDER_ID).getFilesByName(name), newest = null;
+  while (it.hasNext()) {
+    var f = it.next();
+    if (!newest || f.getLastUpdated() > newest.getLastUpdated()) newest = f;
+  }
+  return newest;
 }
 
 function whoFor_(token) {
