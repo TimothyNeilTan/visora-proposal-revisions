@@ -228,6 +228,61 @@ function listVersions() {
 }
 
 /**
+ * Write every contributor revision to `revisions.json` in the Drive folder.
+ *
+ * Findings are audited against the task text on disk, and that is v1. Where a
+ * contributor has already saved a revision, auditing v1 hands them back work they
+ * have already done. This is the way to get their revision out: reading it over the
+ * API needs a signed-in session, and a session needs the emailed code, which is
+ * exactly what a script cannot obtain.
+ *
+ * Reviewer saves are skipped, so what lands in the file is the contributors' own
+ * work. Answers written before the postState fix are folded back out of `responses`,
+ * so a revision that stored an empty answers blob still comes out whole.
+ */
+function exportRevisions() {
+  var hist = versionsByTask_(), out = {}, n = 0;
+  for (var tid in hist) {
+    var list = hist[tid], keep = null;
+    for (var i = 0; i < list.length; i++) {
+      var v = list[i];
+      if (v.rev === true) continue;                                  // a reviewer's save
+      if (v.answers && v.answers['__savedByReviewer']) continue;
+      if (v.answers && v.answers['__review']) continue;
+      keep = v;                                                      // last one wins
+    }
+    if (!keep) continue;
+    var a = {}, f = ['title', 'workflow', 'rubric', 'injection', 'inputs', 'anything'];
+    for (var j = 0; j < f.length; j++) {
+      var direct = keep.answers && keep.answers[f[j]];
+      if (typeof direct === 'string' && direct.length) { a[f[j]] = direct; continue; }
+      var rec = keep.responses && keep.responses['answer:' + tid + ':' + f[j]];
+      if (rec && typeof rec.text === 'string') {
+        var parts = [rec.text];
+        for (var k = 0; k < (rec.ins || []).length; k++) parts.push(rec.ins[k].text);
+        a[f[j]] = parts.join('\n\n');
+      } else if (typeof direct === 'string') { a[f[j]] = direct; }
+    }
+    var rows = (keep.rows && keep.rows.length) ? keep.rows : null;
+    if (!rows) {
+      var rr = keep.responses && keep.responses['rubricrows:' + tid];
+      if (rr && rr.rows && rr.rows.length) rows = rr.rows;
+    }
+    out[tid] = { v: keep.v, by: keep.by, at: keep.at, answers: a, rows: rows || [],
+                 responses: keep.responses || {} };
+    n++;
+  }
+  var name = 'revisions.json', body = JSON.stringify(out, null, 1);
+  var folder = DriveApp.getFolderById(FOLDER_ID), old = folder.getFilesByName(name);
+  while (old.hasNext()) old.next().setTrashed(true);                 // newest upload wins
+  folder.createFile(name, body, MimeType.PLAIN_TEXT);
+  var msg = 'wrote ' + name + ' to the Proposal Revisions folder: ' + n +
+            ' contributor revision(s), ' + body.length + ' bytes';
+  Logger.log(msg);
+  return msg;
+}
+
+/**
  * Drop the reviewer comment overlay for the given tasks, so the findings render
  * exactly as the gist has them.
  *
