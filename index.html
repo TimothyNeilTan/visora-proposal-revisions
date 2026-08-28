@@ -1043,16 +1043,34 @@ const FIELD={
   }
   function markDirty(){ const el=$("#saveline"); if(el&&canPublish) el.textContent="Unsaved changes."; }
 
+  // Which findings an overlay was written against. Everything else in the local
+  // draft is guarded by a timestamp; the overlay was not, and it is the one piece
+  // that can put a comment on screen all by itself.
+  const findingsAtOf=id=>{
+    const t=TASKS.find(x=>x.id===id);
+    return t&&t.findingsAt ? String(t.findingsAt) : "";
+  };
   function saveLocal(){
     // Unpublished comment changes ride along, so a reload does not lose a reviewer's
     // work before they press Publish.
+    const stamp={};
+    for(const k in REVIEW) stamp[k]=findingsAtOf(k);
     try{ localStorage.setItem(LS,JSON.stringify({responses:STATE.responses,versions:STATE.versions,
-         review:REVIEW,reviewDirty:[...REVIEW_DIRTY]})); }catch(e){}
+         review:REVIEW,reviewStamp:stamp,reviewDirty:[...REVIEW_DIRTY]})); }catch(e){}
   }
   function restoreReview(d){
     if(!d) return;
-    if(d.review) for(const k in d.review) REVIEW[k]=d.review[k];
-    (d.reviewDirty||[]).forEach(id=>REVIEW_DIRTY.add(id));
+    const stamp=d.reviewStamp||{};
+    if(d.review) for(const k in d.review){
+      // An overlay written against findings that have since been replaced edits and
+      // withdraws comment ids that no longer exist, and re-adds comments the new pass
+      // does not have. Restoring it put the previous review back on screen over the
+      // current one, and no amount of reloading cleared it, because the copy lived
+      // here rather than on the server. Drop it and take what the server sent.
+      if(findingsAtOf(k) && stamp[k]!==findingsAtOf(k)) continue;
+      REVIEW[k]=d.review[k];
+    }
+    (d.reviewDirty||[]).forEach(id=>{ if(REVIEW[id]) REVIEW_DIRTY.add(id); });
   }
 
   function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
@@ -2155,7 +2173,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="a26f7c737f65";
+  const BUILD="f8e6ae2e1940";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
