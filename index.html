@@ -855,6 +855,13 @@ const FIELD={
   function safeComment(src){
     return esc(String(src||"")).replace(/&lt;(\/?)(i|b|code|em|strong)&gt;/g,"<$1$2>");
   }
+  // A suggested fix names filenames and quotes replacement wording, so it wants the
+  // same few tags the comment body already allows. Escaping it outright printed the
+  // tags at the reader instead of applying them.
+  const sugHTML=src=>safeComment(src);
+  // ...and stripped outright wherever the text lands in a plain-text field, so a
+  // tagged suggestion cannot leak markup into a rubric row.
+  const sugPlain=src=>String(src||"").replace(/<\/?(i|b|code|em|strong)>/g,"");
   function newCommentId(taskId){
     const R=reviewOf(taskId); let n=R.added.length+1, id;
     do{ id="rc"+n; n++; }while(R.added.some(a=>a.id===id));
@@ -1691,17 +1698,17 @@ const FIELD={
         const n=document.createElement("article");
         n.className="note"+(X.gone?" is-withdrawn":""); n.dataset.id=id;
         let sug="";
-        if(kind==="text") sug='<blockquote class="sug">'+esc(act.suggest)+'</blockquote>';
+        if(kind==="text") sug='<blockquote class="sug">'+sugHTML(act.suggest)+'</blockquote>';
         else if(kind==="file"){
           const isNew=(act.mode==="new");
-          sug='<blockquote class="sug"><b>'+(isNew?"New file needed.":"Replacement file needed.")+'</b> '+esc(act.need)+
-              '<br><span class="sug-meta">'+esc(act.formats)+' — '+
+          sug='<blockquote class="sug"><b>'+(isNew?"New file needed.":"Replacement file needed.")+'</b> '+sugHTML(act.need)+
+              '<br><span class="sug-meta">'+sugHTML(act.formats)+' — '+
               (isNew? "nothing matching this was uploaded with your submission."
                     : "the original is already uploaded; this asks for a cleared replacement.")+
               ' Attach it to your resubmission; this page cannot receive files.</span></blockquote>';
         }
-        else if(kind==="author") sug='<blockquote class="sug"><b>Rewrite this answer yourself.</b> We are not drafting it for you. Include:<ul>'+act.must.map(m=>'<li>'+esc(m)+'</li>').join("")+'</ul></blockquote>';
-        else if(kind==="confirm") sug='<blockquote class="sug">'+esc(act.need)+'</blockquote>';
+        else if(kind==="author") sug='<blockquote class="sug"><b>Rewrite this answer yourself.</b> We are not drafting it for you. Include:<ul>'+act.must.map(m=>'<li>'+sugHTML(m)+'</li>').join("")+'</ul></blockquote>';
+        else if(kind==="confirm") sug='<blockquote class="sug">'+sugHTML(act.need)+'</blockquote>';
 
         // a rubric fix phrased as a brand-new line item can be added as a row, then edited freely
         const newCrit = (key==="rubric"&&kind==="text")
@@ -1806,7 +1813,7 @@ const FIELD={
         n.querySelector(".act-edit").onclick=ev=>{
           ev.stopPropagation();
           if(newCrit){
-            const text=newCrit[2].trim();
+            const text=sugPlain(newCrit[2]).trim();
             if(!getRows(t.id).some(x=>String(x.t).trim()===text)) addRow(t.id,newCrit[1],text,true);
             const cur=STATE.responses[id]||{};
             cur.status="edited"; cur.at=Date.now(); cur.by=me&&me.name;
@@ -2148,7 +2155,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="34e42b5619d9";
+  const BUILD="a26f7c737f65";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
