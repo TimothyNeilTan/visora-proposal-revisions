@@ -767,8 +767,13 @@ const FIELD={
   // STATE.versions[id] is every saved iteration, oldest first. v1 is the original
   // submission and is not stored - it comes from ANSWERS.
   const histOf=id=>((STATE.versions&&STATE.versions[id])||[]);
-  const hasV2=id=>histOf(id).length>0;
-  const latestV=id=>{const l=histOf(id); return l.length? l[l.length-1].v : 1;};
+  // Every version helper below counts proposal revisions, not saved rows. A reviewer
+  // publishing a comment change writes a row too, and those rows must not put a
+  // version switcher on a proposal its contributor has never touched. isRevision()
+  // is defined further down, next to the answer comparison it needs; nothing here
+  // runs before then.
+  const hasV2=id=>revsOf(id).length>0;
+  const latestV=id=>{const l=revsOf(id); return l.length? l[l.length-1].v : 1;};
   const shownV=id=>viewV[id]||latestV(id);
   const verAt=(id,n)=>histOf(id).filter(x=>x.v===n)[0]||null;
   // Saves made before the postState fix stored an empty answers map, because the
@@ -872,12 +877,36 @@ const FIELD={
   const isRev=()=>!!(me&&me.rev);
   // Only a save by the contributor freezes their proposal. A reviewer's save - which
   // is how comment edits persist - would otherwise lock the contributor out of
-  // answering the very comments the reviewer had just written. Iterations saved
-  // before this flag existed carry no rev, and were contributors' own.
+  // answering the very comments the reviewer had just written.
+  //
+  // The flag settles it for anything saved since the flag existed. It cannot settle
+  // the rows written before that, and reading those as "no flag, so a contributor's"
+  // was backwards: reviewer comment overlays used to ride along as saved iterations,
+  // so every one of them counted as a proposal revision. That is what put a version
+  // switcher and a Changes button on proposals nobody had revised. So ask the
+  // question that actually decides it - did this iteration change an answer? A
+  // comment-only save changes none, and the test needs no flag, so it reads the old
+  // rows correctly too.
   const REV_SAVE_KEY="__savedByReviewer";
-  const savedByRev=v=>!!(v&&v.answers&&v.answers[REV_SAVE_KEY]);
-  const contribSaved=id=>histOf(id).some(v=>!savedByRev(v));
-  const revsOf=id=>histOf(id).filter(v=>!savedByRev(v));   // proposal revisions only
+  const ANS_FIELDS=["title","workflow","injection","inputs","anything"];
+  // REVIEW_KEY is the giveaway on the pre-flag rows: an iteration carrying a comment
+  // overlay was written by a reviewer publishing comment changes, whatever else it holds.
+  const savedByRev=v=>!!(v&&v.answers&&(v.answers[REV_SAVE_KEY]||v.answers[REVIEW_KEY]));
+  // verAnswer() and verRows() both fall back to the submitted answer when an
+  // iteration recorded nothing for a field, so an untouched field compares equal.
+  const rowKey=r=>String(r&&r.p!=null?r.p:"")+" "+String((r&&r.t)||"").trim();
+  function touchesAnswers(id,v){
+    const base=ANSWERS[id]||{};
+    for(let i=0;i<ANS_FIELDS.length;i++){
+      const f=ANS_FIELDS[i];
+      if(String(verAnswer(id,v.v,f)||"").trim()!==String(base[f]||"").trim()) return true;
+    }
+    const was=splitRubric(base.rubric||"").map(rowKey), now=(verRows(id,v.v)||[]).map(rowKey);
+    return was.length!==now.length||was.some((k,i)=>k!==now[i]);
+  }
+  const isRevision=(id,v)=>!!v&&!savedByRev(v)&&touchesAnswers(id,v);
+  const revsOf=id=>histOf(id).filter(v=>isRevision(id,v));  // proposal revisions only
+  const contribSaved=id=>revsOf(id).length>0;
   const frozen=id=>!isRev()&&contribSaved(id);
   // Reviewers were excluded from the diff by frozen(), which is backwards - they are
   // the ones reading for what changed. It is a toggle now, on by default past v1.
@@ -1903,7 +1932,10 @@ const FIELD={
       answers[REV_SAVE_KEY]=isRev();               // survives the round trip; a bare field does not
       const responses={};
       ALL.filter(i=>i.task===t.id).forEach(i=>{ responses[i.id]=STATE.responses[i.id]||{}; });
-      const next=latestV(t.id)+1;
+      // One past the highest row ever written, not past the last revision - the
+      // backend numbers the same way, and a reviewer's comment row occupies a number
+      // even though it is not a revision. Numbering off latestV() would reuse it.
+      const next=histOf(t.id).reduce((m,x)=>Math.max(m,Number(x.v)||0),1)+1;
       const list=histOf(t.id).slice();
       list.push({v:next,at:new Date().toISOString(),by:(me&&me.name)||"contributor",
                  answers:answers,rows:getRows(t.id),responses:responses});
@@ -2061,7 +2093,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="561d0ecefe26";
+  const BUILD="58807c1d320d";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";

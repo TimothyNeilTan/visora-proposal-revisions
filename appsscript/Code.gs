@@ -181,6 +181,70 @@ function resetSandbox() {
   return msg;
 }
 
+/**
+ * Read-only: log what the `versions` and `comments` tabs actually hold.
+ *
+ * Run this before clearing anything. A reviewer publishing a comment change writes
+ * a row too, and the ones written before the `comments` tab existed went into
+ * `versions` carrying a `__review` overlay in their answers blob. Those are the rows
+ * that used to raise a version switcher on a proposal nobody had revised.
+ */
+function listVersions() {
+  var out = [], r = rows_('versions');
+  for (var i = 0; i < r.length; i++) {
+    if (!r[i][0]) continue;
+    var a = {};
+    try { a = JSON.parse(r[i][4] || '{}'); } catch (err) {}
+    var fields = [];
+    for (var k in a) if (k.indexOf('__') !== 0 && a[k]) fields.push(k);
+    out.push(r[i][0] + '  v' + r[i][1] + '  by ' + r[i][3] +
+             '  reviewerFlag=' + (a['__savedByReviewer'] ? 'yes' : 'no') +
+             '  reviewOverlay=' + (a['__review'] ? 'yes' : 'no') +
+             '  answers=[' + fields.join(',') + ']');
+  }
+  var c = rows_('comments'), cm = [];
+  for (var j = 0; j < c.length; j++) {
+    if (!c[j][0]) continue;
+    var o = {};
+    try { o = JSON.parse(c[j][1] || '{}'); } catch (err) {}
+    cm.push(c[j][0] + '  edits=' + Object.keys(o.edits || {}).length +
+            '  removed=' + ((o.removed || []).length) +
+            '  added=' + ((o.added || []).length) + '  by ' + c[j][3]);
+  }
+  var msg = 'versions (' + out.length + '):\n  ' + (out.join('\n  ') || '(none)') +
+            '\n\ncomments overlay (' + cm.length + '):\n  ' + (cm.join('\n  ') || '(none)');
+  Logger.log(msg);
+  return msg;
+}
+
+/**
+ * Drop the reviewer comment overlay for the given tasks, so the findings render
+ * exactly as the gist has them.
+ *
+ * Needed after the findings are replaced wholesale: the overlay is keyed by comment
+ * id, an edit or a withdrawal of an id that no longer exists is inert, but a comment
+ * the reviewer *added* keeps rendering on top of the new set. A refresh cannot clear
+ * it - `reload()` rewrites `tasks` and `people` and nothing else.
+ *
+ * Defaults to the nine contributor proposals and leaves `test` alone; resetSandbox()
+ * is the one for the sandbox. Editor-only, like every function here that deletes a
+ * row: the push token can only make the Sheet re-read the gist.
+ */
+function clearReviewerComments(taskIds) {
+  var ids = taskIds || ['bedroom', 'cafe', 'desk', 'flying', 'mecha',
+                        'sholl', 'dentate', 'iba1', 'map2'];
+  var parts = [], total = 0;
+  for (var i = 0; i < ids.length; i++) {
+    var n = purgeTabRows_('comments', ids[i]);
+    total += n;
+    if (n) parts.push(ids[i] + ' (' + n + ')');
+  }
+  var msg = 'dropped ' + total + ' comment-overlay row(s)' +
+            (parts.length ? ': ' + parts.join(', ') : '');
+  Logger.log(msg);
+  return msg;
+}
+
 // ---- push token --------------------------------------------------------------
 // Refreshing the findings is a machine job: rebuild tasks.min.json, push it to the
 // gist, tell the script to re-read it. The emailed-code sign-in exists to prove a
