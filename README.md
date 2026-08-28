@@ -175,6 +175,21 @@ little — the only thing it can do is make the Sheet re-read the gist — and r
 `mintPushToken()` revokes the old one. The emailed-code route still works and is
 unchanged; the token is an addition, not a replacement.
 
+### Resetting the sandbox
+
+Replacing the sandbox proposal's findings leaves any saved iteration of it pointing at
+the wrong comments: dispositions are keyed by comment id, and a fresh set of findings
+reuses ids like `t7` for a different comment. So after `push_findings.py` changes the
+`test` proposal, run **`resetSandbox()`** in the Apps Script editor. It drops `test`'s
+saved iterations, its reviewer comment overlay and any legacy state row, so the task
+opens at v1 as-submitted — no before/after diff, no crossed-out text, no dispositions
+attached to comments that have since changed meaning.
+
+This one is editor-only on purpose. Anything that deletes a row stays off the push
+token, whose whole safety story is that it can only make the Sheet re-read the gist.
+Running a function in the editor needs no redeploy — paste the current `Code.gs`, pick
+the function, Run.
+
 The access list is the one thing still in Drive, because it holds email addresses:
 drop `data/people.json` into the **Proposal Revisions** folder and run `reload`.
 

@@ -140,6 +140,47 @@ function checkCode_(email, code) {
   return true;
 }
 
+// ---- maintenance -------------------------------------------------------------
+// Editor-only, and deliberately not reachable over the web app. The push token's
+// whole safety story is that the only thing it can do is make the Sheet re-read
+// the gist, so nothing that destroys a row hangs off it.
+
+/** Delete every saved iteration of one task. Returns how many rows went. */
+function purgeVersions_(taskId) {
+  var sh = sheet_('versions'), v = sh.getDataRange().getValues(), gone = 0;
+  // Bottom-up: deleting a row shifts every row below it up by one.
+  for (var i = v.length - 1; i >= 1; i--) {
+    if (String(v[i][0]) === taskId) { sh.deleteRow(i + 1); gone++; }
+  }
+  return gone;
+}
+
+/** Delete one task's rows from a tab keyed by taskId in column A. */
+function purgeTabRows_(tab, taskId) {
+  var sh = sheet_(tab), v = sh.getDataRange().getValues(), gone = 0;
+  for (var i = v.length - 1; i >= 1; i--) {
+    if (String(v[i][0]) === taskId) { sh.deleteRow(i + 1); gone++; }
+  }
+  return gone;
+}
+
+/**
+ * Put the sandbox proposal back to as-submitted: drop its saved iterations, its
+ * reviewer comment overlay and any legacy state row.
+ *
+ * Worth doing whenever the sandbox's findings are replaced. Dispositions are
+ * keyed by comment id, and a new set of findings reuses ids like `t7` for a
+ * different comment - so iterations saved against the old set would attach a
+ * contributor's "fixed" to whatever now holds that id.
+ */
+function resetSandbox() {
+  var msg = 'test: dropped ' + purgeVersions_('test') + ' iteration(s), ' +
+            purgeTabRows_('comments', 'test') + ' comment-overlay row(s), ' +
+            purgeTabRows_('state', 'test') + ' legacy state row(s)';
+  Logger.log(msg);
+  return msg;
+}
+
 // ---- push token --------------------------------------------------------------
 // Refreshing the findings is a machine job: rebuild tasks.min.json, push it to the
 // gist, tell the script to re-read it. The emailed-code sign-in exists to prove a
