@@ -1501,6 +1501,11 @@ const FIELD={
     const cur=shownV(t.id);
     const FZ=frozen(t.id);                          // a contributor, after their own save
     const DIFF=diffShown(t.id,cur);                 // the before/after, not a bare iteration
+    // Which version the verdict chips actually scored. Findings published after the
+    // newest revision were written against it, so the chips describe that revision
+    // rather than the original submission - and saying otherwise sent contributors
+    // off to rerun a validation that had already been run on their work.
+    const scoredV=findingsSince(t.id)?latestV(t.id):1;
     const canReview=isRev();                        // a diff freezes the answer, not the review
     const ro=FZ||showingV1(t.id)||DIFF;             // a diff is a comparison, not an editor
     const shownLabel="v"+cur;
@@ -1521,7 +1526,11 @@ const FIELD={
         (isRev()?'<button type="button" class="btn btn-rerun" id="btn-rerun">Rerun validation</button>':'')+
       '</div>':'')+
       '<div class="verdicts">'+t.verdicts.map(([k,v])=>'<span class="vchip v-'+v+'" title="'+esc(k+' — '+(SKILL_INFO[k]||""))+'">'+esc(SKILL_SHORT[k]||k)+' <b>'+esc(v)+'</b></span>').join("")+'</div>'+
-      (V2&&!ro?'<p class="vnote">Verdict chips above are from the v1 pass. Rerun validation to score v'+cur+'.</p>':'')+
+      (V2&&!ro?'<p class="vnote">'+(findingsSince(t.id)
+        ? 'Verdict chips above are from the review of v'+scoredV+'.'+
+          (cur!==scoredV?' You are looking at v'+cur+'.':'')
+        : 'Verdict chips above are from the v'+scoredV+' pass. Rerun validation to score v'+latestV(t.id)+'.')+
+        '</p>':'')+
       // Not isRev(): a contributor whose proposal reopened is reading the same
       // comparison, and fell through to the read-only note, which told them to
       // switch to the version they were already on.
@@ -2205,7 +2214,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="d44563d5039a";
+  const BUILD="c1f420e77306";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
