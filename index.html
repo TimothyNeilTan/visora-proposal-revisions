@@ -1522,7 +1522,10 @@ const FIELD={
       '</div>':'')+
       '<div class="verdicts">'+t.verdicts.map(([k,v])=>'<span class="vchip v-'+v+'" title="'+esc(k+' — '+(SKILL_INFO[k]||""))+'">'+esc(SKILL_SHORT[k]||k)+' <b>'+esc(v)+'</b></span>').join("")+'</div>'+
       (V2&&!ro?'<p class="vnote">Verdict chips above are from the v1 pass. Rerun validation to score v'+cur+'.</p>':'')+
-      (DIFF&&isRev()
+      // Not isRev(): a contributor whose proposal reopened is reading the same
+      // comparison, and fell through to the read-only note, which told them to
+      // switch to the version they were already on.
+      (DIFF&&!FZ
         ? '<p class="vnote">Showing what changed between v'+prevV(t.id,cur)+' and v'+cur+': '+
           '<span class="d-key d-key-del">removed or replaced</span>, '+
           '<span class="d-key d-key-ins">added</span>. Turn off <b>Changes</b> to read v'+cur+
@@ -2202,7 +2205,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="dfff9d30fa1d";
+  const BUILD="d44563d5039a";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
