@@ -527,6 +527,20 @@ body:not(.signed-in) .wrap,body:not(.signed-in) .toolbar{display:none}
 }
 .gate-form input:focus-visible{outline:2px solid var(--focus); outline-offset:2px}
 .gate-err{margin:0; font-size:13.5px; color:var(--blocker); min-height:19px; line-height:1.4}
+.gate-note{
+  margin:12px 0 0; font-size:12.5px; color:var(--ink-3); line-height:1.45;
+}
+/* Resuming a saved sign-in. The email form is hidden while this shows, so nobody
+   can request a code the page was never going to need. */
+.gate-resume{display:flex; flex-direction:column; gap:10px; align-items:flex-start}
+.gate-resume .gate-note{margin:0; display:flex; align-items:center; gap:8px; color:var(--ink-2); font-size:13.5px}
+.gate-spin{
+  width:13px; height:13px; flex:0 0 13px; border-radius:50%;
+  border:2px solid var(--line); border-top-color:var(--accent-ink);
+  animation:gate-spin .7s linear infinite;
+}
+@keyframes gate-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){ .gate-spin{animation-duration:2.4s} }
 .whoami{
   display:flex; align-items:center; justify-content:space-between; gap:8px;
   margin-top:14px; padding-top:12px; border-top:1px solid var(--line);
@@ -609,6 +623,7 @@ dialog::backdrop{background:rgba(10,14,20,.55)}
       <input id="gate-email" type="email" autocomplete="email" placeholder="you@example.com" required>
       <p class="gate-err" id="gate-err"></p>
       <button class="btn btn-primary" type="submit" id="gate-go">Email me a code</button>
+      <p class="gate-note" id="gate-hint">You only need a code the first time you sign in on this device. After that this page remembers you for 30 days and signs you straight in.</p>
     </form>
     <form class="gate-form" id="code-form" hidden>
       <label for="gate-code">Six-digit code</label>
@@ -617,6 +632,10 @@ dialog::backdrop{background:rgba(10,14,20,.55)}
       <button class="btn btn-primary" type="submit" id="code-go">Sign in</button>
       <button type="button" class="linkbtn" id="code-back">Use a different address</button>
     </form>
+    <div class="gate-resume" id="gate-resume" hidden>
+      <p class="gate-note"><span class="gate-spin" aria-hidden="true"></span><span id="resume-msg">Checking your saved sign-in…</span></p>
+      <button type="button" class="linkbtn" id="resume-other">Sign in as someone else</button>
+    </div>
   </div>
 </div>
 
@@ -971,9 +990,12 @@ const FIELD={
   };
   const frozen=id=>!isRev()&&contribSaved(id)&&!findingsSince(id);
   // Reviewers were excluded from the diff by frozen(), which is backwards - they are
-  // the ones reading for what changed. It is a toggle now, on by default past v1.
+  // the ones reading for what changed. It is a toggle now, off until asked for: the
+  // marks answered "what changed" for a reader who had not asked that yet, and the
+  // answer they came to read arrived struck through and interleaved. Opening plain
+  // and one click from the marks reads the version first, the edit second.
   const diffOn={};
-  const diffShown=(id,cur)=>cur!==1&&contribSaved(id)&&diffOn[id]!==false;
+  const diffShown=(id,cur)=>cur!==1&&contribSaved(id)&&diffOn[id]===true;
   // "Edit answer" arms a comment: it settles when the answer it points at actually
   // changes. Two things were wrong with keeping that in a per-field closure. It did
   // not survive renderTask() - adding a rubric row or switching version tab silently
@@ -1510,11 +1532,18 @@ const FIELD={
             ? 'Showing what changed between v'+prevV(t.id,cur)+' and v'+cur+': <span class="d-key d-key-del">removed or replaced</span>, '+
               '<span class="d-key d-key-ins">added</span>. Verdict chips are from the v1 pass — '+
               'your saved answers are locked while the reviewer revalidates them.'
-            : 'Showing the original submission. Switch to v'+latestV(t.id)+' to see what you changed.')+'</p>'
+            : cur===1
+            ? 'Showing the original submission. Switch to v'+latestV(t.id)+' to see what you saved.'
+            : 'Showing v'+cur+' as you saved it — locked while the reviewer revalidates it. '+
+              'Turn on <b>Changes</b> to mark what you edited since v'+prevV(t.id,cur)+'.')+'</p>'
         : ro
         ? '<p class="vnote">Showing '+(cur===1?'the original submission':'iteration v'+cur+
           (verAt(t.id,cur)&&verAt(t.id,cur).by?' saved by '+esc(verAt(t.id,cur).by):''))+
           ' — read only. Switch to v'+latestV(t.id)+' to keep editing.</p>'
+        // Off by default, the marks have to say they are there. Without this the only
+        // sign of them is a button labelled "Changes" among the version tabs.
+        : cur!==1&&contribSaved(t.id)
+        ? '<p class="vnote">Reading v'+cur+' plainly. Turn on <b>Changes</b> to mark what moved since v'+prevV(t.id,cur)+'.</p>'
         : '');
     app.appendChild(head);
     head.querySelectorAll(".vbtn").forEach(b=>{
@@ -2173,7 +2202,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="f8e6ae2e1940";
+  const BUILD="dfff9d30fa1d";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
@@ -2285,9 +2314,42 @@ const FIELD={
       input.focus();
     });
 
+    document.getElementById("resume-other").addEventListener("click",()=>{
+      SESSION=""; EMAIL=""; CODE="";
+      try{ localStorage.removeItem(SESSKEY); localStorage.removeItem(WHOKEY); }catch(e){}
+      showGateForm("Enter the email address you submitted your task proposal with.","");
+      input.value=""; input.focus();
+    });
+
     let rEmail="", rSess="";
     try{ rEmail=localStorage.getItem(WHOKEY)||""; rSess=localStorage.getItem(SESSKEY)||""; }catch(e){}
-    if(rEmail&&rSess){ EMAIL=rEmail; SESSION=rSess; input.value=rEmail; signInWith(rEmail); }
+    if(rEmail&&rSess){
+      // A saved sign-in is checked before anything is asked for. The email form stays
+      // hidden while that happens: it was visible with the address already filled in
+      // and "Email me a code" live, so the page looked like it wanted a code it was
+      // never going to need - and a click would have sent one.
+      EMAIL=rEmail; SESSION=rSess; input.value=rEmail;
+      document.getElementById("gate-h").textContent="Welcome back";
+      document.getElementById("gate-msg").textContent=
+        "Signing you in as "+rEmail+". This device is already verified, so there is no code to enter.";
+      form.hidden=true; cform.hidden=true;
+      document.getElementById("gate-resume").hidden=false;
+      signInWith(rEmail);
+    }
+  }
+
+  // The one place that puts the gate back to asking for an address, so the resume
+  // panel cannot be left on screen behind a form that has taken over.
+  function showGateForm(msg,err){
+    const f=document.getElementById("gate-form"), c=document.getElementById("code-form");
+    const r=document.getElementById("gate-resume"), ce=document.getElementById("code-err");
+    if(r) r.hidden=true;
+    if(c) c.hidden=true;
+    if(f) f.hidden=false;
+    document.getElementById("gate-h").textContent="Find your proposal";
+    document.getElementById("gate-msg").textContent=msg;
+    document.getElementById("gate-err").textContent=err||"";
+    if(ce) ce.textContent="";
   }
 
   async function signInWith(addr){
@@ -2295,15 +2357,23 @@ const FIELD={
     if(!clean) return;
     EMAIL=clean;
     const cgo=document.getElementById("code-go"), cerr=document.getElementById("code-err");
-    const done=msg=>{
+    // opts.keep  - the saved sign-in may still be good, so do not throw it away
+    // opts.quiet - the sentence above already explains this; a red line would only
+    //              contradict it, as "enter the code we emailed you" does when the
+    //              page is resuming and has emailed nothing
+    const done=(msg,opts)=>{
+      opts=opts||{};
       if(cgo){ cgo.disabled=false; cgo.textContent="Sign in"; }
       if(cerr) cerr.textContent=msg||"";
-      if(msg){                                   // a stale session must not strand anyone
-        SESSION=""; try{ localStorage.removeItem(SESSKEY); }catch(e){}
-        const f=document.getElementById("gate-form"), c=document.getElementById("code-form");
-        if(f&&c&&SESSION==="" && !CODE){ c.hidden=true; f.hidden=false;
-          document.getElementById("gate-err").textContent=msg; cerr.textContent=""; }
-      }
+      if(!msg) return;
+      const wasResuming=!CODE;                   // a stale session must not strand anyone
+      if(!opts.keep){ SESSION=""; try{ localStorage.removeItem(SESSKEY); }catch(e){} }
+      if(!wasResuming) return;
+      showGateForm(
+        opts.keep
+          ? "We could not check your saved sign-in. Reload to try again, or enter your address for a new code."
+          : "Your saved sign-in has run out. Enter your address and we will email a new code.",
+        opts.quiet ? "" : msg);
     };
     // Apps Script drops the occasional cold-start request, so retry before giving up.
     let data=null, lastErr=null;
@@ -2319,14 +2389,16 @@ const FIELD={
              : code==="need_code"     ? "Enter the six-digit code we emailed you."
              : code==="unknown_token" ? "The server is running an older version that does not support email sign-in yet. Tell the reviewer the Apps Script needs redeploying."
              : code==="unknown_email" ? "No proposal is filed under that address. Check the address you submitted with, or ask the reviewer."
-             : "Sign-in failed ("+(code||"unknown")+"). Tell the reviewer what this says.");
+             : "Sign-in failed ("+(code||"unknown")+"). Tell the reviewer what this says.",
+             {quiet: code==="need_code"});
           return;
         }
         data=body;
       }catch(e){ lastErr=String(e); }
     }
     if(!data){
-      done("Could not reach the server after three tries. This is usually temporary — try again.");
+      done("Could not reach the server after three tries. This is usually temporary — try again.",
+           {keep:true});
       return;
     }
     if(data.session) SESSION=data.session;

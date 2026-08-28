@@ -241,7 +241,7 @@ function listVersions() {
  * so a revision that stored an empty answers blob still comes out whole.
  */
 function exportRevisions() {
-  var hist = versionsByTask_(), out = {}, n = 0;
+  var hist = versionsByTask_(), all = allTasks_(), out = {}, n = 0;
   for (var tid in hist) {
     var list = hist[tid], keep = null;
     for (var i = 0; i < list.length; i++) {
@@ -262,13 +262,29 @@ function exportRevisions() {
         for (var k = 0; k < (rec.ins || []).length; k++) parts.push(rec.ins[k].text);
         a[f[j]] = parts.join('\n\n');
       } else if (typeof direct === 'string') { a[f[j]] = direct; }
+      // Nothing recorded either way means the contributor never touched this field,
+      // so the iteration holds what was submitted. Leaving it out instead reads as a
+      // field the contributor emptied, which is what the page's verAnswer() has
+      // always known not to do - and what made a v2 look like it had lost its title.
+      if (a[f[j]] === undefined) {
+        var sub = all[tid] && all[tid].answers ? all[tid].answers[f[j]] : '';
+        a[f[j]] = typeof sub === 'string' ? sub : '';
+      }
     }
     var rows = (keep.rows && keep.rows.length) ? keep.rows : null;
     if (!rows) {
       var rr = keep.responses && keep.responses['rubricrows:' + tid];
       if (rr && rr.rows && rr.rows.length) rows = rr.rows;
     }
-    out[tid] = { v: keep.v, by: keep.by, at: keep.at, answers: a, rows: rows || [],
+    // Same for the rubric: an iteration that recorded no rows kept the submitted ones.
+    if (!rows) {
+      var sr = all[tid] && all[tid].answers ? all[tid].answers.rubric : '';
+      out[tid] = { v: keep.v, by: keep.by, at: keep.at, answers: a, rows: [],
+                   rubricFromV1: typeof sr === 'string' ? sr : '',
+                   responses: keep.responses || {} };
+      n++; continue;
+    }
+    out[tid] = { v: keep.v, by: keep.by, at: keep.at, answers: a, rows: rows,
                  responses: keep.responses || {} };
     n++;
   }
