@@ -950,7 +950,19 @@ const FIELD={
     const p=prevV(id,n);
     return p===1 ? splitRubric((ANSWERS[id]||{}).rubric||"") : (verRows(id,p)||[]);
   };
-  const frozen=id=>!isRev()&&contribSaved(id);
+  // A frozen proposal shows no comments: once the contributor has answered the
+  // review, their page is the record of what they changed. That holds for exactly
+  // one round. When a fresh set of findings is published against the revision they
+  // saved, the page has to open again - otherwise the new review reaches everyone
+  // except the person it was written for. `findingsAt` is stamped per task when the
+  // findings are published; a task without one behaves as it always did.
+  const findingsSince=id=>{
+    const t=TASKS.find(x=>x.id===id), l=revsOf(id);
+    if(!t||!t.findingsAt||!l.length) return false;
+    const last=l[l.length-1].at;
+    return !!last && String(t.findingsAt)>String(last);
+  };
+  const frozen=id=>!isRev()&&contribSaved(id)&&!findingsSince(id);
   // Reviewers were excluded from the diff by frozen(), which is backwards - they are
   // the ones reading for what changed. It is a toggle now, on by default past v1.
   const diffOn={};
@@ -2136,7 +2148,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="6db81864313b";
+  const BUILD="34e42b5619d9";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
