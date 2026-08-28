@@ -904,9 +904,31 @@ const FIELD={
     const was=splitRubric(base.rubric||"").map(rowKey), now=(verRows(id,v.v)||[]).map(rowKey);
     return was.length!==now.length||was.some((k,i)=>k!==now[i]);
   }
+  // touchesAnswers compares against v1 rather than against the revision before it,
+  // and has to: revsOf() is what orders the revisions, so asking "what came before"
+  // here would need the answer it is being used to compute. v1 is also the right
+  // base for this question - "has the contributor changed anything at all" - and the
+  // diff below is where the predecessor matters.
   const isRevision=(id,v)=>!!v&&!savedByRev(v)&&touchesAnswers(id,v);
   const revsOf=id=>histOf(id).filter(v=>isRevision(id,v));  // proposal revisions only
   const contribSaved=id=>revsOf(id).length>0;
+  // The revision before revision n, or 1 for the first one - v1 is the original
+  // submission and is not a stored row, so it comes from ANSWERS. Showing v3 against
+  // v1 folded v2's edits into the marks and read as though the contributor had made
+  // them again; each revision is shown against the one it was written from.
+  const prevV=(id,n)=>{
+    const l=revsOf(id);
+    for(let i=0;i<l.length;i++) if(l[i].v===n) return i? l[i-1].v : 1;
+    return 1;
+  };
+  const baseAnswer=(id,n,field)=>{
+    const p=prevV(id,n);
+    return p===1 ? String((ANSWERS[id]||{})[field]||"") : String(verAnswer(id,p,field)||"");
+  };
+  const baseRows=(id,n)=>{
+    const p=prevV(id,n);
+    return p===1 ? splitRubric((ANSWERS[id]||{}).rubric||"") : (verRows(id,p)||[]);
+  };
   const frozen=id=>!isRev()&&contribSaved(id);
   // Reviewers were excluded from the diff by frozen(), which is backwards - they are
   // the ones reading for what changed. It is a toggle now, on by default past v1.
@@ -1415,19 +1437,19 @@ const FIELD={
             (x.v===latestV(t.id)?' · latest':'')+'</button>').join("")+
         '</div>'+
         (cur!==1?'<button type="button" class="vbtn vbtn-diff" id="btn-diff" aria-pressed="'+DIFF+'"'+
-          ' title="Mark what changed against v1">Changes</button>':'')+
+          ' title="Mark what changed against v'+prevV(t.id,cur)+'">Changes</button>':'')+
         (isRev()?'<button type="button" class="btn btn-rerun" id="btn-rerun">Rerun validation</button>':'')+
       '</div>':'')+
       '<div class="verdicts">'+t.verdicts.map(([k,v])=>'<span class="vchip v-'+v+'" title="'+esc(k+' — '+(SKILL_INFO[k]||""))+'">'+esc(SKILL_SHORT[k]||k)+' <b>'+esc(v)+'</b></span>').join("")+'</div>'+
       (V2&&!ro?'<p class="vnote">Verdict chips above are from the v1 pass. Rerun validation to score v'+cur+'.</p>':'')+
       (DIFF&&isRev()
-        ? '<p class="vnote">Showing what changed between v1 and v'+cur+': '+
+        ? '<p class="vnote">Showing what changed between v'+prevV(t.id,cur)+' and v'+cur+': '+
           '<span class="d-key d-key-del">removed or replaced</span>, '+
           '<span class="d-key d-key-ins">added</span>. Turn off <b>Changes</b> to read v'+cur+
           ' plainly'+(cur===latestV(t.id)?' and edit it':'')+'.</p>'
       : FZ
         ? '<p class="vnote">'+(DIFF
-            ? 'Showing what changed between v1 and v'+cur+': <span class="d-key d-key-del">removed or replaced</span>, '+
+            ? 'Showing what changed between v'+prevV(t.id,cur)+' and v'+cur+': <span class="d-key d-key-del">removed or replaced</span>, '+
               '<span class="d-key d-key-ins">added</span>. Verdict chips are from the v1 pass — '+
               'your saved answers are locked while the reviewer revalidates them.'
             : 'Showing the original submission. Switch to v'+latestV(t.id)+' to see what you changed.')+'</p>'
@@ -1469,7 +1491,7 @@ const FIELD={
                               : verRows(t.id,shownV(t.id)))
           : getRows(t.id);
         answerHTML= DIFF
-          ? diffRowsHTML(splitRubric((ANSWERS[t.id]||{}).rubric||""), rows)
+          ? diffRowsHTML(baseRows(t.id,shownV(t.id)), rows)
           : '<div class="rubric" data-task="'+t.id+'">'+
           '<div class="rhead"><span>#</span><span>Points</span><span>Reasoning — what earns them</span><span></span></div>'+
           rows.map((r,i)=>
@@ -1489,7 +1511,7 @@ const FIELD={
         '<div class="q-col">'+
         '<div class="q-head"><h3>'+esc(question)+'</h3>'+(help?'<p class="q-help">'+esc(help)+'</p>':'')+'</div>'+
         '<div class="q-answer'+(editable?" is-editable":"")+'">'+
-          (editable?'<div class="ans-bar"><span class="ans-lab">'+(DIFF?"Before \u2192 after":ro?"As submitted in v1":"Your answer — edit it directly")+'</span>'+
+          (editable?'<div class="ans-bar"><span class="ans-lab">'+(DIFF?"Before \u2192 after":ro?(shownV(t.id)===1?"As submitted in v1":"Saved in v"+shownV(t.id)):"Your answer — edit it directly")+'</span>'+
             (items.length&&!ro?'<span class="ans-hint">Click a comment to highlight where it applies</span>':'')+'</div>':'')+
           answerHTML+
         '</div>'+
@@ -1505,7 +1527,7 @@ const FIELD={
       const roText=()=>{ const n=shownV(t.id);
         if(n===1) return String((ANSWERS[t.id]||{})[key]||"");
         return String(verAnswer(t.id,n,key)||""); };
-      if(editEl&&DIFF) paintDiff(editEl, String((ANSWERS[t.id]||{})[key]||""), roText());
+      if(editEl&&DIFF) paintDiff(editEl, baseAnswer(t.id,shownV(t.id),key), roText());
       else if(editEl) paintAnswer(editEl, ro? roText() : fullAns(t.id,key), []);
       if(ro&&editEl) editEl.classList.add("is-ro");
       if(DIFF&&editEl) editEl.classList.add("is-diff");
@@ -2093,7 +2115,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="58807c1d320d";
+  const BUILD="5546f625a7e1";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
