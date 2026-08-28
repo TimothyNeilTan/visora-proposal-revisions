@@ -190,17 +190,27 @@ function resetSandbox() {
  * that used to raise a version switcher on a proposal nobody had revised.
  */
 function listVersions() {
-  var out = [], r = rows_('versions');
+  var out = [], r = rows_('versions'), own = contributorsByTask_();
   for (var i = 0; i < r.length; i++) {
     if (!r[i][0]) continue;
-    var a = {};
+    var tid = String(r[i][0]);
+    var a = {}, resp = {};
     try { a = JSON.parse(r[i][4] || '{}'); } catch (err) {}
+    try { resp = JSON.parse(r[i][6] || '{}'); } catch (err) {}
     var fields = [];
     for (var k in a) if (k.indexOf('__') !== 0 && a[k]) fields.push(k);
-    out.push(r[i][0] + '  v' + r[i][1] + '  by ' + r[i][3] +
+    // Saves made before the postState fix left answers empty and put the text in
+    // responses instead, so an empty answers blob is not an empty revision.
+    var carried = [];
+    for (var rk in resp) if (rk.indexOf('answer:' + tid + ':') === 0) carried.push(rk.split(':')[2]);
+    var rev = revOf_(own, tid, r[i][3]);
+    out.push(tid + '  v' + r[i][1] + '  by ' + r[i][3] +
+             '  savedByReviewer=' + (rev === null ? 'unknown' : rev ? 'YES' : 'no') +
              '  reviewerFlag=' + (a['__savedByReviewer'] ? 'yes' : 'no') +
              '  reviewOverlay=' + (a['__review'] ? 'yes' : 'no') +
-             '  answers=[' + fields.join(',') + ']');
+             '  answers=[' + fields.join(',') + ']' +
+             '  answersInResponses=[' + carried.join(',') + ']' +
+             '  rubricRows=' + (r[i][5] ? (JSON.parse(r[i][5]) || []).length : 0));
   }
   var c = rows_('comments'), cm = [];
   for (var j = 0; j < c.length; j++) {
@@ -345,8 +355,43 @@ function allTasks_() {
  * Every saved iteration per proposal, oldest first. Anything written before the
  * history tab existed is folded in as iteration 2 so nothing is lost.
  */
+/**
+ * taskId -> { contributor name (lowercased): true }, from the access list.
+ *
+ * A reviewer on the reviewer domain is never in the `people` tab - whoFor_() lets
+ * them in on the domain alone and names them after the local part of their address.
+ * So "who owns this proposal" is the only question that separates a contributor's
+ * revision from a reviewer's save, and it is the one the client cannot answer: it
+ * is told its own access, not everyone else's.
+ */
+function contributorsByTask_() {
+  var out = {}, r = rows_('people');
+  for (var i = 0; i < r.length; i++) {
+    if (String(r[i][3]).toUpperCase() === 'TRUE') continue;   // reviewers own no proposal
+    var name = String(r[i][1] || '').trim().toLowerCase();
+    if (!name) continue;
+    var ts = String(r[i][2]).split(',');
+    for (var j = 0; j < ts.length; j++) {
+      var t = ts[j].trim();
+      if (t) (out[t] = out[t] || {})[name] = true;
+    }
+  }
+  return out;
+}
+
+/**
+ * `rev` on each iteration says whether it was saved by someone other than the
+ * proposal's own contributor. Null where the access list does not name a
+ * contributor for the task, so the client falls back to reading the row instead of
+ * treating "unknown" as "reviewer" and hiding a real revision.
+ */
+function revOf_(own, tid, savedBy) {
+  if (!own[tid]) return null;
+  return !own[tid][String(savedBy || '').trim().toLowerCase()];
+}
+
 function versionsByTask_() {
-  var out = {}, r = rows_('versions');
+  var out = {}, r = rows_('versions'), own = contributorsByTask_();
   for (var i = 0; i < r.length; i++) {
     var tid = String(r[i][0] || '');
     if (!tid) continue;
@@ -354,6 +399,7 @@ function versionsByTask_() {
       v: Number(r[i][1]) || 2,
       at: r[i][2] ? String(r[i][2]) : null,
       by: r[i][3] ? String(r[i][3]) : null,
+      rev: revOf_(own, tid, r[i][3]),
       answers: r[i][4] ? JSON.parse(r[i][4]) : {},
       rows: r[i][5] ? JSON.parse(r[i][5]) : [],
       responses: r[i][6] ? JSON.parse(r[i][6]) : {}
@@ -364,7 +410,7 @@ function versionsByTask_() {
     if (out[t] && out[t].length) continue;         // history wins where it exists
     var s = legacy[t];
     if (!s.version) continue;
-    out[t] = [{ v: 2, at: s.savedAt, by: s.savedBy,
+    out[t] = [{ v: 2, at: s.savedAt, by: s.savedBy, rev: revOf_(own, t, s.savedBy),
                 answers: s.version.answers || {}, rows: s.version.rows || [],
                 responses: s.responses || {} }];
   }

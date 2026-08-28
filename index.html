@@ -889,11 +889,30 @@ const FIELD={
   // rows correctly too.
   const REV_SAVE_KEY="__savedByReviewer";
   const ANS_FIELDS=["title","workflow","injection","inputs","anything"];
-  // REVIEW_KEY is the giveaway on the pre-flag rows: an iteration carrying a comment
-  // overlay was written by a reviewer publishing comment changes, whatever else it holds.
-  const savedByRev=v=>!!(v&&v.answers&&(v.answers[REV_SAVE_KEY]||v.answers[REVIEW_KEY]));
+  // Three tests, cheapest last. v.rev is the backend's answer to "was this saved by
+  // someone other than the proposal's own contributor", which is the only test that
+  // catches a reviewer save carrying neither the flag nor an overlay - a reviewer on
+  // the reviewer domain is in no access list, so the page cannot work it out alone.
+  // It is null when the access list names no contributor for the task, and then the
+  // older tests decide rather than "unknown" hiding a real revision. REVIEW_KEY is
+  // the giveaway on the pre-flag rows: an iteration carrying a comment overlay was
+  // written by a reviewer publishing comment changes, whatever else it holds.
+  const savedByRev=v=>!!(v&&(v.rev===true||
+    (v.answers&&(v.answers[REV_SAVE_KEY]||v.answers[REVIEW_KEY]))));
   // verAnswer() and verRows() both fall back to the submitted answer when an
   // iteration recorded nothing for a field, so an untouched field compares equal.
+  // verRows() reads a stored empty array as a rubric emptied on purpose, which is
+  // right for display and wrong here: a row that recorded no rubric at all stores the
+  // same empty array, and reading that as "every criterion deleted" made an iteration
+  // that changed nothing look like the largest revision in the set. Null means the
+  // iteration recorded no rubric, so there is nothing to compare.
+  const rowsRecorded=(id,n)=>{
+    const v=verAt(id,n); if(!v) return null;
+    if(Array.isArray(v.rows)&&v.rows.length) return v.rows;
+    const rec=v.responses&&v.responses["rubricrows:"+id];
+    if(rec&&Array.isArray(rec.rows)&&rec.rows.length) return rec.rows;
+    return null;
+  };
   const rowKey=r=>String(r&&r.p!=null?r.p:"")+" "+String((r&&r.t)||"").trim();
   function touchesAnswers(id,v){
     const base=ANSWERS[id]||{};
@@ -901,8 +920,10 @@ const FIELD={
       const f=ANS_FIELDS[i];
       if(String(verAnswer(id,v.v,f)||"").trim()!==String(base[f]||"").trim()) return true;
     }
-    const was=splitRubric(base.rubric||"").map(rowKey), now=(verRows(id,v.v)||[]).map(rowKey);
-    return was.length!==now.length||was.some((k,i)=>k!==now[i]);
+    const now=rowsRecorded(id,v.v);
+    if(!now) return false;                          // no text moved, no rubric recorded
+    const was=splitRubric(base.rubric||"").map(rowKey), nk=now.map(rowKey);
+    return was.length!==nk.length||was.some((k,i)=>k!==nk[i]);
   }
   // touchesAnswers compares against v1 rather than against the revision before it,
   // and has to: revsOf() is what orders the revisions, so asking "what came before"
@@ -2115,7 +2136,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="5546f625a7e1";
+  const BUILD="6db81864313b";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";

@@ -2,4 +2,4 @@
 // Deploy > New deployment > Web app  ->  copy the URL ending in /exec
 //
 // Changing this does NOT require rebuilding the page.
-window.PROPOSAL_API = "https://script.google.com/macros/s/AKfycbxeBC7hHldfLhOF2tEgn3RepDvBDRtetSEQvcl8PS5PkIIdH4ey8wgIA7DFtbcS0SjMiA/exec";
+window.PROPOSAL_API = "https://script.google.com/macros/s/AKfycbx9Imm0exNXkkhv45C3ETfKqIJJulLF5DlowWHD7L3T70EvphnVA61ipDimvureWcjG9w/exec";
