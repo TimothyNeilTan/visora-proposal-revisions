@@ -33,7 +33,8 @@
  * Setup:
  *   1. run setup()      - creates the three tabs
  *   2. run reload()     - pulls proposals from the gist and people from Drive
- *   3. Deploy > Manage deployments > edit > New version
+ *   3. run mintPushToken() - logs the token that lets a script publish findings
+ *   4. Deploy > Manage deployments > edit > New version
  */
 
 var SHEET_ID  = '1T5yHoW0r8GSKozR_EyaL179ozjiPzUUqSlZ-274nIn4';  // "Proposal Revisions — data"
@@ -137,6 +138,32 @@ function checkCode_(email, code) {
   if (!want || String(code || '').trim() !== want) return false;
   cache.remove('code:' + email);                          // one use only
   return true;
+}
+
+// ---- push token --------------------------------------------------------------
+// Refreshing the findings is a machine job: rebuild tasks.min.json, push it to the
+// gist, tell the script to re-read it. The emailed-code sign-in exists to prove a
+// person can read their mail - which a script cannot do, and should not have to.
+// So `path=refresh` also accepts a long-lived token that authorises nothing else.
+//
+// Run mintPushToken() once from the editor and put the token it logs into
+// site/data/push_token.txt (data/ is gitignored, so it stays out of the public
+// repo). Losing it costs little: the only thing it can do is make the Sheet
+// re-read the gist, and re-minting revokes the old one.
+function mintPushToken() {
+  var tok = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+  PropertiesService.getScriptProperties().setProperty('pushToken', tok);
+  Logger.log('push token: ' + tok);
+  return tok;
+}
+function pushTokenOk_(t) {
+  var want = PropertiesService.getScriptProperties().getProperty('pushToken');
+  if (!want || !t) return false;
+  t = String(t);
+  if (t.length !== want.length) return false;      // compared without early exit
+  var diff = 0;
+  for (var i = 0; i < want.length; i++) diff |= t.charCodeAt(i) ^ want.charCodeAt(i);
+  return diff === 0;
 }
 
 // ---- sessions ----------------------------------------------------------------
@@ -294,6 +321,13 @@ function doGet(e) {
     if (!whoFor_(addr)) return out_({ error: 'unknown_email' });
     issueCode_(addr);
     return out_({ ok: true, sent: true });
+  }
+
+  // A push token refreshes the findings and does nothing else, so a script can
+  // publish without holding a sign-in session only a person can obtain.
+  if (e.parameter.path === 'refresh' && e.parameter.t) {
+    if (!pushTokenOk_(e.parameter.t)) return out_({ error: 'bad_token' });
+    return out_({ ok: true, message: reload() });
   }
 
   var auth = authed_(e);

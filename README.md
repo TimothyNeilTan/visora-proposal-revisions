@@ -66,6 +66,9 @@ in at the top of `appsscript/Code.gs`.
 - Open the Sheet → **Extensions → Apps Script**. Paste in `appsscript/Code.gs`.
 - Run **`setup`** once (authorise it when asked). Creates the `tokens`, `tasks`
   and `state` tabs.
+- Run **`mintPushToken`** once and put the token it logs into `data/push_token.txt`,
+  so `push_findings.py` can publish findings without a sign-in. See
+  [The push token](#the-push-token).
 
 **2. Load the data**
 
@@ -137,16 +140,40 @@ short-lived code to the address and verify it before granting a session.
 ## Updating the findings
 
 The proposals and comments live in a **secret gist**, not in Drive, so a refresh needs
-no upload:
+no upload. Edit `data/tasks.json`, then:
 
 ```
-python3 ../build_site.py                     # if the page itself changed
-gh gist edit 37b3db9e7618c6d183efda767cc09791 -a data/tasks.min.json
-curl -sL "<exec-url>?path=refresh&email=tim@sievedata.com"
+python3 ../push_findings.py
 ```
 
-That last call re-reads the gist into the Sheet. Saved revisions live in the `state`
-tab and are never touched by a refresh.
+That validates the file, rebuilds `data/tasks.min.json` from it, pushes the gist, and
+tells the script to re-read it. `tasks.json` is the source of truth and `tasks.min.json`
+is generated, so the two cannot drift. Saved revisions live in the `versions` and
+`state` tabs and are never touched by a refresh. Run `python3 ../build_site.py` as well
+only if the page itself changed.
+
+`--check` validates and writes nothing; `--dry-run` also rebuilds the minified file but
+pushes nothing. The validation is the point of the script: the dev server accepts shapes
+the live backend quietly drops, so it checks severities, action kinds, that every comment
+has a skill, and that no comment id is reused across tasks — Apps Script indexes comment
+ids globally, so a duplicate would misroute a reviewer's edits.
+
+### The push token
+
+`?path=refresh` normally requires a signed-in session, and a session requires the
+six-digit code emailed to the address — which proves a person can read their mail, and
+which a script cannot do. So refresh also accepts a **push token**, which authorises
+nothing else. One-time setup, in the Apps Script editor:
+
+1. paste in `appsscript/Code.gs`
+2. run **`mintPushToken()`** and copy the token from the execution log
+3. put it in `data/push_token.txt` (`data/` is gitignored, so it stays out of this repo)
+4. **Deploy → Manage deployments → edit → Version: New version**
+
+`PROPOSAL_PUSH_TOKEN` in the environment overrides the file. Losing the token costs
+little — the only thing it can do is make the Sheet re-read the gist — and re-running
+`mintPushToken()` revokes the old one. The emailed-code route still works and is
+unchanged; the token is an addition, not a replacement.
 
 The access list is the one thing still in Drive, because it holds email addresses:
 drop `data/people.json` into the **Proposal Revisions** folder and run `reload`.
