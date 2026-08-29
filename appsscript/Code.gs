@@ -299,6 +299,79 @@ function exportRevisions() {
 }
 
 /**
+ * Remove the staging notes from every stored revision.
+ *
+ * When a proposal was staged from its PDF we added parenthetical notes about the
+ * form export - that one numbered a stage "(3)" twice, that another skipped (4),
+ * that a typo was corrected. They went into the answer text rather than alongside
+ * it, and the editor seeds its answer box from that text, so a contributor who
+ * revised the proposal carried the note into their revision. It is our text, it is
+ * not task content, and it would otherwise reach the agent as part of the
+ * instruction.
+ *
+ * Only the exact strings we wrote are removed, so a contributor's own parenthetical
+ * is never touched. Editor-only, like everything here that rewrites a row.
+ */
+var STAGING_NOTES = [
+  '*(Stage numbering is verbatim from the form \u2014 "(3)" appears twice.)*',
+  '*(Stage numbering is verbatim from the form \u2014 it skips (4).)*',
+  '*(Verbatim from the form; the submitter wrote the workflow as a flat bullet list rather than numbered stages.)*'
+];
+
+function stripNote_(s) {
+  if (typeof s !== 'string') return s;
+  var out = s;
+  for (var i = 0; i < STAGING_NOTES.length; i++) {
+    var at = out.indexOf(STAGING_NOTES[i]);
+    while (at >= 0) {
+      out = out.slice(0, at) + out.slice(at + STAGING_NOTES[i].length);
+      at = out.indexOf(STAGING_NOTES[i]);
+    }
+  }
+  // A note removed from its own paragraph leaves the blank lines that framed it -
+  // at the top of a field as well as the bottom, which is where map2's sat.
+  return out.replace(/\n{3,}/g, '\n\n').replace(/^\s+/, '').replace(/\s+$/, '');
+}
+
+function stripStagingNotes() {
+  var sh = sheet_('versions'), v = sh.getDataRange().getValues(), hits = [];
+  for (var i = 1; i < v.length; i++) {
+    if (!v[i][0]) continue;
+    var tid = String(v[i][0]), changed = [];
+
+    var ans = {};
+    try { ans = JSON.parse(v[i][4] || '{}'); } catch (e) { ans = null; }
+    if (ans) {
+      for (var k in ans) {
+        var was = ans[k], now = stripNote_(was);
+        if (typeof was === 'string' && now !== was) { ans[k] = now; changed.push('answers.' + k); }
+      }
+    }
+
+    // The pre-postState rows keep their text here instead, so both sides need it.
+    var resp = {};
+    try { resp = JSON.parse(v[i][6] || '{}'); } catch (e) { resp = null; }
+    if (resp) {
+      for (var rk in resp) {
+        var rec = resp[rk];
+        if (!rec || typeof rec.text !== 'string') continue;
+        var n2 = stripNote_(rec.text);
+        if (n2 !== rec.text) { rec.text = n2; changed.push(rk); }
+      }
+    }
+
+    if (!changed.length) continue;
+    if (ans)  sh.getRange(i + 1, 5).setValue(JSON.stringify(ans));
+    if (resp) sh.getRange(i + 1, 7).setValue(JSON.stringify(resp));
+    hits.push(tid + ' v' + v[i][1] + ' (' + changed.join(', ') + ')');
+  }
+  var msg = hits.length ? 'stripped the staging note from: ' + hits.join('; ')
+                        : 'no stored revision carried a staging note';
+  Logger.log(msg);
+  return msg;
+}
+
+/**
  * Drop the reviewer comment overlay for the given tasks, so the findings render
  * exactly as the gist has them.
  *
