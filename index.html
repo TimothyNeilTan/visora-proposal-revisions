@@ -670,7 +670,7 @@ dialog::backdrop{background:rgba(10,14,20,.55)}
     <span class="saveline" id="saveline"></span>
   </div>
   <button class="btn" id="btn-comments" hidden>Publish comment changes</button>
-  <button class="btn" id="btn-copy">Copy my responses</button>
+  <button class="btn" id="btn-copy">Copy this proposal</button>
   <button class="btn btn-primary" id="btn-save">Save responses</button>
 </div>
 
@@ -1988,7 +1988,9 @@ const FIELD={
 
   function summaryText(){
     const out=[];
-    visible.forEach(t=>{
+    // Only the proposal on screen: the copy button sits next to Save, which is
+    // also per-proposal, so a bundle of everything would not match what you sent.
+    visible.filter(t=>t.id===current).forEach(t=>{
       const A=ANSWERS[t.id]||{};
       const byField={};
       t.sections.forEach(([title,items])=>items.forEach(it=>{
@@ -2088,8 +2090,6 @@ const FIELD={
   };
 
   // ---- v2 revalidation hand-off ----
-  const SKILL_FILES=["prompt-artifact-consistency","prompt-rubric-consistency","prompt-rubric-coverage",
-                     "required-files-manifest","task-difficulty-estimate","task-edit-suggestions"];
   function revalidationBundle(t){
     // STATE.versions[id] is the list of iterations. Reading .answers off the list
     // gave undefined, so the bundle came out with an empty title, an empty workflow,
@@ -2113,9 +2113,10 @@ const FIELD={
     o.push("Submitter: "+t.who);
     o.push("Revised by "+(V.by||"contributor")+" on "+(V.at?new Date(V.at).toLocaleString():"an unrecorded date"));
     o.push("");
-    o.push("Run all six local validation skills against the v2 content below, then write");
-    o.push("one file per skill into the task's validation/v"+n+"/ directory:");
-    SKILL_FILES.forEach((s,i)=>o.push("  "+(i+1)+". prompts/local_visora_"+s+".md"));
+    o.push("Re-audit the v2 content below with the local audit prompts. prompts/README.md");
+    o.push("is the source of truth for which prompts to run, in what order, and where each");
+    o.push("report goes - read it first and follow it. Write the reports into the task's");
+    o.push("validation/v"+n+"/ directory.");
     o.push("");
     o.push("================ instruction/v"+n+".md ================");
     o.push("");
@@ -2159,10 +2160,10 @@ const FIELD={
   // What to paste into Claude Code once the bundle is on disk. The skills are local
   // prompt files that need the staged inputs, so they run there, not in this page.
   function revalidationPrompt(t,n,filename){
-    return "Run the Visora validation skills against the revised proposal in "+
-      "~/Downloads/"+filename+".\n\n"+
-      "Skills to run, in order:\n"+
-      SKILL_FILES.map((s,i)=>"  "+(i+1)+". prompts/local_visora_"+s+".md").join("\n")+"\n\n"+
+    return "Re-audit the revised proposal in ~/Downloads/"+filename+" with the local "+
+      "audit prompts.\n\n"+
+      "Read prompts/README.md first and follow it: it lists which prompts to run, the "+
+      "order they run in, and what each one's report should contain.\n\n"+
       "The bundle carries the v"+n+" instruction, rubric and inputs, plus how each v1 "+
       "comment was answered. Score v"+n+" on its own terms - do not carry the v1 "+
       "verdicts forward. Write one file per skill into "+t.id+"/validation/v"+n+"/, "+
@@ -2175,7 +2176,7 @@ const FIELD={
     const n=(V&&V.v)||latestV(t.id);
     const filename=t.id+"_v"+n+"_revalidation.md";
     $("#dlg-title").textContent="Rerun validation on "+t.name+" v"+n;
-    $("#dlg-note").textContent="The validation skills are local prompt files that need Claude and the task's staged inputs, so they run in Claude Code rather than in this page. Save the bundle and the prompt to run it with, then paste the prompt into Claude Code.";
+    $("#dlg-note").textContent="The audit prompts are local files that need Claude and the task's staged inputs, so they run in Claude Code rather than in this page. Save the bundle and the prompt to run it with, then paste the prompt into Claude Code - it points at prompts/README.md, which says which prompts to run and in what order.";
     $("#dlg-text").value=text;
     const dl=$("#dlg-download");
     if(dl){
@@ -2201,7 +2202,11 @@ const FIELD={
     const dl=$("#dlg-download"); if(dl) dl.hidden=true;
     $("#dlg").showModal();
   }
-  $("#btn-copy").onclick=()=>openDialog("Your revised proposal","Your answers with the accepted wording merged in, plus your replies. Copy this and send it back.");
+  $("#btn-copy").onclick=()=>{
+    const t=TASKS.find(x=>x.id===current);
+    openDialog("Your revised proposal"+(t?" — "+t.name:""),
+      "Your answers for this proposal with the accepted wording merged in, plus your replies. Copy this and send it back.");
+  };
   $("#dlg-close").onclick=()=>$("#dlg").close();
   $("#dlg-copy").onclick=async()=>{
     const t=$("#dlg-text"); t.select();
@@ -2214,7 +2219,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="c1f420e77306";
+  const BUILD="1e95d031a51e";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
