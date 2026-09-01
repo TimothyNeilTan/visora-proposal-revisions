@@ -765,7 +765,7 @@ const FIELD={
     // counting against the contributor and a new one starts.
     ALL=[];
     TASKS.forEach(t=>itemsFor(t,false).forEach(
-      x=>ALL.push({task:t.id,id:x.item[0],sev:x.item[1]})));
+      x=>ALL.push({task:t.id,id:x.item[0],sev:x.item[1],added:x.added})));
   }
 
   function signIn(identity){
@@ -989,6 +989,24 @@ const FIELD={
     return !!last && String(t.findingsAt)>String(last);
   };
   const frozen=id=>!isRev()&&contribSaved(id)&&!findingsSince(id);
+  // The version a round of findings was written against: the newest revision that
+  // existed when the round was published. A review of v2 is not a review of the v3
+  // that answers it, so its comments show on v2 and nowhere else - switching to a
+  // version no round was written about shows the answers alone.
+  //
+  // A task whose findings predate the findingsAt stamp cannot be placed this way.
+  // Those stay on the latest version, which is where they have always shown.
+  const roundV=id=>{
+    const at=findingsAtOf(id);
+    if(!at) return latestV(id);
+    let v=1;                                      // v1 is the original submission
+    revsOf(id).forEach(x=>{ if(String(x.at)<String(at)) v=x.v; });
+    return v;
+  };
+  // A comment the reviewer is writing now has no published round to belong to. It is
+  // about what is on screen, which is the newest version, and it has to stay visible
+  // where it was written or the reviewer could not finish writing it.
+  const commentV=(id,x)=>x&&x.added ? latestV(id) : roundV(id);
   // Which save a round of comments belongs to. A review is written against the
   // version that was on the table when it was published, and it is answered by the
   // save that follows it - after that it is history, and the comments stay with the
@@ -1117,9 +1135,13 @@ const FIELD={
       const fz=frozen(t.id);
       b.innerHTML='<span class="t-name">'+esc(t.name)+'</span>'+
         '<span class="t-who">'+esc(t.who.split(" · ")[0])+'</span>'+
-        '<span class="t-meter"><span class="bar"><i style="width:'+(fz?100:(items.length?done/items.length*100:0))+'%"></i></span>'+
-        '<span class="t-count">'+(fz ? "v"+latestV(t.id)+" · saved"
-          : esc(t.version||"v1")+" · "+done+"/"+items.length+(openBlockers?" · "+openBlockers+" blk":""))+'</span></span>';
+        // A proposal with no comments has no progress to meter - an empty bar reading
+        // 0/0 looked like a review that had been ignored rather than one not yet written.
+        ((fz||items.length)
+          ? '<span class="t-meter"><span class="bar"><i style="width:'+(fz?100:done/items.length*100)+'%"></i></span>'+
+            '<span class="t-count">'+(fz ? "v"+latestV(t.id)+" · saved"
+              : esc(t.version||"v1")+" · "+done+"/"+items.length+(openBlockers?" · "+openBlockers+" blk":""))+'</span></span>'
+          : '<span class="t-meter"><span class="t-count">'+esc(t.version||"v1")+'</span></span>');
       b.onclick=()=>{current=t.id; renderRail(); renderTask(); window.scrollTo({top:0,behavior:"smooth"});};
       el.appendChild(b);
     });
@@ -1508,6 +1530,19 @@ const FIELD={
     const hist=revsOf(t.id), V2=hist.length?hist[hist.length-1]:null;
     const cur=shownV(t.id);
     const FZ=frozen(t.id);                          // a contributor, after their own save
+    // The comments are on the version they were written about. Land on any other one
+    // and the answers stand alone, which reads as "there was no review" unless the
+    // page says where the review actually is.
+    // Only the published round is counted here. A comment the reviewer just added
+    // lives on the newest version, so counting it would have the note claim it was
+    // written about a version it says nothing about.
+    const RV=roundV(t.id);
+    const nComments=itemsFor(t,isRev()).filter(x=>commentV(t.id,x)===RV).length;
+    const roundNote=(!FZ&&nComments&&cur!==RV)
+      ? '<p class="vnote">The '+nComments+' comment'+(nComments>1?'s':'')+' on this proposal '+
+        (RV===1?'were written about the original submission':'were written about v'+RV)+
+        '. Switch to v'+RV+' to read '+(nComments>1?'them':'it')+'.</p>'
+      : '';
     const DIFF=diffShown(t.id,cur);                 // the before/after, not a bare iteration
     // Which version the verdict chips actually scored. Findings published after the
     // newest revision were written against it, so the chips describe that revision
@@ -1564,7 +1599,7 @@ const FIELD={
         // sign of them is a button labelled "Changes" among the version tabs.
         : cur!==1&&contribSaved(t.id)
         ? '<p class="vnote">Reading v'+cur+' plainly. Turn on <b>Changes</b> to mark what moved since v'+prevV(t.id,cur)+'.</p>'
-        : '');
+        : '')+roundNote;
     app.appendChild(head);
     head.querySelectorAll(".vbtn").forEach(b=>{
       if(b.id==="btn-diff") return;
@@ -1576,7 +1611,9 @@ const FIELD={
     if(rerunBtn) rerunBtn.onclick=()=>openRevalidation(t);
 
     FORM.forEach(([key,question,help,type])=>{
-      const items=FZ?[]:(byField[key]||[]);           // a frozen proposal shows no comments
+      // A frozen proposal shows no comments, and a version no round was written
+      // against shows none either - they belong to the version they graded.
+      const items=FZ?[]:(byField[key]||[]).filter(x=>commentV(t.id,x)===cur);
       const val=A[key];
       const isEmpty=!val || (Array.isArray(val)&&!val.length);
       if(isEmpty && !items.length && type!=="choice") return;      // nothing submitted, nothing to say
@@ -1985,7 +2022,17 @@ const FIELD={
       refreshSaveGate();
       return;
     }
-    const items=ALL.filter(i=>i.task===current);
+    // The comments on the version being read, not every comment on the proposal.
+    const items=ALL.filter(i=>i.task===current&&commentV(current,i)===shownV(current));
+    // Nothing to answer means nothing to say about answering it. "0 of 0 comments
+    // answered, all blockers addressed" announced a review that does not exist.
+    if(!items.length){
+      $("#tally-done").textContent="";
+      $("#tally-block").textContent="";
+      $("#tally-block").classList.remove("warn");
+      refreshSaveGate();
+      return;
+    }
     const done=items.filter(i=>answered(STATE.responses[i.id])).length;
     const openB=items.filter(i=>i.sev==="blocker"&&!answered(STATE.responses[i.id])).length;
     $("#tally-done").innerHTML='<b>'+done+'</b> of '+items.length+' comments answered';
@@ -2257,7 +2304,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="ac6abcf139e8";
+  const BUILD="44b5f3222c0f";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
