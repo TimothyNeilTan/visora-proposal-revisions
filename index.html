@@ -989,6 +989,14 @@ const FIELD={
     return !!last && String(t.findingsAt)>String(last);
   };
   const frozen=id=>!isRev()&&contribSaved(id)&&!findingsSince(id);
+  // Which save a round of comments belongs to. A review is written against the
+  // version that was on the table when it was published, and it is answered by the
+  // save that follows it - after that it is history, and the comments stay with the
+  // version they graded. Re-stamping them onto every later save filed last round's
+  // comments under a version nobody had reviewed, so v3 came back looking as though
+  // it had been graded and answered too. True only for the save that answers an open
+  // round: the first save of all, or the first one after fresh findings landed.
+  const answersOpenReview=id=>!contribSaved(id)||findingsSince(id);
   // Reviewers were excluded from the diff by frozen(), which is backwards - they are
   // the ones reading for what changed. It is a toggle now, off until asked for: the
   // marks answered "what changed" for a reader who had not asked that yet, and the
@@ -2029,6 +2037,27 @@ const FIELD={
   }
 
   // ---- persistence ----
+  // What a save is allowed to write back. STATE.responses is one flat map holding two
+  // unrelated things: the answer text and rubric rows the contributor is editing, which
+  // always travel, and the responses to each comment, which travel only with the
+  // version that answers that comment's round. makeV2() has already decided the latter
+  // per task - it is exactly what it stamped into the newest iteration - so read the
+  // decision back off there rather than recomputing it, which would come out wrong now
+  // that the new iteration is itself the newest save.
+  let PENDING=null;                                 // set by makeV2: what this save may file
+  function outgoingResponses(){
+    const own={};                                   // comment id -> the task it belongs to
+    ALL.forEach(i=>{ own[i.id]=i.task; });
+    const allow={};
+    Object.keys(PENDING||{}).forEach(id=>
+      Object.keys(PENDING[id]||{}).forEach(k=>{ allow[k]=true; }));
+    const out={};
+    Object.keys(STATE.responses||{}).forEach(k=>{
+      if(own[k]&&!allow[k]) return;                 // a round already filed on its version
+      out[k]=STATE.responses[k];
+    });
+    return out;
+  }
   function stamp(msg){ $("#saveline").textContent=msg; }
 
   function buildDocument(){
@@ -2048,13 +2077,22 @@ const FIELD={
   // Saving stamps the current answers as v2 — the revision that answers the review.
   function makeV2(){
     const only=TASKS.filter(t=>t.id===current);
+    // A save writes a row for every proposal this contributor has, but only the one on
+    // screen is being revised. PENDING says which comment responses that row may carry -
+    // nothing at all for the proposals riding along, whose comments were filed on the
+    // version that answered them.
+    PENDING={};
     only.forEach(t=>{
       const answers={};
       FORM.forEach(([key,q,hlp,type])=>{ if(type==="long"||type==="short") answers[key]=fullAns(t.id,key); });
       answers.uploads=(ANSWERS[t.id]||{}).uploads||[];
       answers[REV_SAVE_KEY]=isRev();               // survives the round trip; a bare field does not
+      // Only the save that answers the open round carries its comments; a later save
+      // leaves them on the version they were graded for.
       const responses={};
-      ALL.filter(i=>i.task===t.id).forEach(i=>{ responses[i.id]=STATE.responses[i.id]||{}; });
+      if(answersOpenReview(t.id))
+        ALL.filter(i=>i.task===t.id).forEach(i=>{ responses[i.id]=STATE.responses[i.id]||{}; });
+      PENDING[t.id]=responses;
       // One past the highest row ever written, not past the last revision - the
       // backend numbers the same way, and a reviewer's comment row occupies a number
       // even though it is not a revision. Numbering off latestV() would reuse it.
@@ -2219,7 +2257,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="1e95d031a51e";
+  const BUILD="ac6abcf139e8";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
@@ -2485,7 +2523,9 @@ const FIELD={
       // ver.answers off whatever it is handed - and an array has no .answers, so it
       // stored {} for every save and the saved text never reached the versions row.
       // Send the newest iteration alone, which is the shape the backend expects.
-      body:JSON.stringify({responses:STATE.responses,versions:newestVersions()})
+      // outgoingResponses(), not STATE.responses: a comment's response belongs to the
+      // version that answered its round, and a later save must not re-file it.
+      body:JSON.stringify({responses:outgoingResponses(),versions:newestVersions()})
     });
     if(!r.ok) throw new Error("http "+r.status);
     const out=await r.json();

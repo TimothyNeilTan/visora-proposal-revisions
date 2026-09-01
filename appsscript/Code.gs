@@ -645,7 +645,13 @@ function doGet(e) {
     if (!list || !list.length) continue;
     versions[id] = list;                                   // every iteration, oldest first
     var newest = list[list.length - 1];                    // working state is the newest one
-    for (var k in newest.responses) responses[k] = newest.responses[k];
+    // Every iteration, oldest first, newest winning. A comment's response is stored on
+    // the version that answered its round and is not re-filed by later saves, so the
+    // newest row alone would report an answered comment as still open. The answer text
+    // and rubric rows ride in the same map and are rewritten on every save, so the
+    // newest row still wins for those.
+    for (var j = 0; j < list.length; j++)
+      for (var k in list[j].responses) responses[k] = list[j].responses[k];
     if (newest.at && (!savedAt || newest.at > savedAt)) { savedAt = newest.at; savedBy = newest.by; }
   }
   var allC = commentsByTask_(), comments = {};

@@ -70,7 +70,11 @@ class H(http.server.SimpleHTTPRequestHandler):
                 if not hist: continue
                 versions[tid]=hist
                 newest=hist[-1]
-                responses.update(newest.get("responses") or {})
+                # Every iteration, oldest first, newest winning: a comment's response is
+                # stored on the version that answered its round and is not re-filed by
+                # later saves, so reading only the newest row would show a comment the
+                # contributor had answered as still open.
+                for row in hist: responses.update(row.get("responses") or {})
                 if newest.get("at") and (savedAt is None or newest["at"]>savedAt):
                     savedAt=newest["at"]; savedBy=newest.get("by")
             import secrets as _s
