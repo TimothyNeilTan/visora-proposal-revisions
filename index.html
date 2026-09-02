@@ -2343,7 +2343,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="ce173034df7d";
+  const BUILD="30f8628ae05e";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
@@ -2357,6 +2357,19 @@ const FIELD={
     return u;
   };
   let saveTimer=null;
+
+  // Apps Script sometimes accepts a request and then sits on it: measured against a
+  // path that returns before it reads anything, the median is under a second but the
+  // tail runs to 8s, 24s, over a minute, with the odd bogus 404 thrown in. So no call
+  // to it is made without a deadline of its own. An abandoned attempt can be retried;
+  // an open one can only be waited on, which is how signing in came to take a minute.
+  async function fetchDeadline(url,ms,opts){
+    const ctl=new AbortController();
+    const bell=setTimeout(()=>ctl.abort(),ms);
+    try{ return await fetch(url,Object.assign({cache:"no-store"},opts||{},{signal:ctl.signal})); }
+    finally{ clearTimeout(bell); }
+  }
+  const timedOut=e=>!!(e&&e.name==="AbortError");
 
   function gateFail(title,msg){
     const h=document.getElementById("gate-h"), m=document.getElementById("gate-msg");
@@ -2419,9 +2432,9 @@ const FIELD={
       gerr.textContent=""; go.disabled=true; go.textContent="Sending…";
       let res=null;
       try{
-        const r=await fetch(API+"?path=code&email="+encodeURIComponent(addr),{cache:"no-store"});
+        const r=await fetchDeadline(API+"?path=code&email="+encodeURIComponent(addr),25000);
         res=await r.json();
-      }catch(e){ res={error:"unreachable"}; }
+      }catch(e){ res=timedOut(e)? {error:"timeout"} : {error:"unreachable"}; }
       go.disabled=false; go.textContent="Email me a code";
       if(res&&res.ok){
         EMAIL=addr;
@@ -2435,6 +2448,7 @@ const FIELD={
         res&&res.error==="unknown_token" ? "The server is running an older version that does not support email sign-in yet. Tell the reviewer the Apps Script needs redeploying."
       : res&&res.error==="unknown_email" ? "No proposal is filed under that address. Check the address you submitted with, or ask the reviewer."
       : res&&res.error==="too_many_codes" ? "Too many codes requested for that address. Wait a little and try again."
+      : res&&res.error==="timeout" ? "The server took too long to answer. It does this now and then — press the button again."
       : res&&res.error          ? "Sign-in failed ("+res.error+"). Tell the reviewer what this says."
       : "Could not reach the server. Try again in a moment.";
     });
@@ -2516,12 +2530,29 @@ const FIELD={
           : "Your saved sign-in has run out. Enter your address and we will email a new code.",
         opts.quiet ? "" : msg);
     };
+    // A stalled attempt used to leave one unchanging sentence on screen for the whole
+    // wait, which reads as dead rather than slow. Only from the second try, though:
+    // the first needs no excuse, and saying so would make the common case look sick.
+    const progress=(i,n)=>{
+      if(!i) return;
+      const rm=document.getElementById("resume-msg");
+      if(!CODE && rm){ rm.textContent="The server is being slow. Still trying — attempt "+(i+1)+" of "+n+"…"; return; }
+      if(cgo) cgo.textContent="Attempt "+(i+1)+" of "+n+"…";
+    };
     // Apps Script drops the occasional cold-start request, so retry before giving up.
+    // Each try is given its own deadline rather than being left to hang, and the
+    // deadlines grow: a server that is genuinely slow but alive still gets a patient
+    // last attempt, while a stall no longer costs the whole minute it used to.
+    const DEADLINES=[8000,15000,25000];
     let data=null, lastErr=null;
-    for(let attempt=0; attempt<3 && !data; attempt++){
-      if(attempt) await new Promise(r=>setTimeout(r, 1200*attempt));
+    for(let attempt=0; attempt<DEADLINES.length && !data; attempt++){
+      // A 404 here is the cold-start artifact, not an answer, so it is retried at
+      // once - waiting out a backoff for it was pure dead time. A real failure still
+      // backs off, so a struggling server is not hammered.
+      if(attempt) await new Promise(r=>setTimeout(r, lastErr==="http 404" ? 0 : 1200*attempt));
+      progress(attempt,DEADLINES.length);
       try{
-        const r=await fetch(apiUrl("session"),{cache:"no-store"});
+        const r=await fetchDeadline(apiUrl("session"),DEADLINES[attempt]);
         if(!r.ok && r.status!==403){ lastErr="http "+r.status; continue; }
         const body=await r.json();
         if(r.status===403 || (body&&body.error)){
@@ -2535,10 +2566,10 @@ const FIELD={
           return;
         }
         data=body;
-      }catch(e){ lastErr=String(e); }
+      }catch(e){ lastErr=timedOut(e)? "timed out" : String(e); }
     }
     if(!data){
-      done("Could not reach the server after three tries. This is usually temporary — try again.",
+      done("Could not reach the server after three tries ("+(lastErr||"no answer")+"). This is usually temporary — try again.",
            {keep:true});
       return;
     }
