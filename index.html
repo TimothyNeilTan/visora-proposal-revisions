@@ -846,7 +846,8 @@ const FIELD={
       if(!keepRemoved && R.removed.indexOf(it[0])>=0) return;
       const e=R.edits[it[0]];
       const item = e ? [it[0], e.sev||it[1], e.html||it[2], it[3]] : it;
-      out.push({sec:title, item:item, added:false, gone:R.removed.indexOf(it[0])>=0});
+      out.push({sec:title, item:item, added:false, gone:R.removed.indexOf(it[0])>=0,
+                v:(t.commentVersions||{})[it[0]]||null});
     }));
     R.added.forEach(a=>{
       if(!keepRemoved && R.removed.indexOf(a.id)>=0) return;
@@ -1006,7 +1007,14 @@ const FIELD={
   // A comment the reviewer is writing now has no published round to belong to. It is
   // about what is on screen, which is the newest version, and it has to stay visible
   // where it was written or the reviewer could not finish writing it.
-  const commentV=(id,x)=>x&&x.added ? latestV(id) : roundV(id);
+  // A comment published with its own round tag names the version it graded, so two
+  // rounds can be on show at once - last round's comments stay on the version they
+  // were written about instead of being dragged onto the save that answered them.
+  // Untagged comments keep deriving their round from findingsAt, so a task that
+  // publishes one round at a time is unaffected.
+  const tagV=v=>{ const n=Number(String(v).replace(/^v/i,"")); return n>0?n:null; };
+  const commentV=(id,x)=>x&&x.added ? latestV(id)
+                       : ((x&&x.v&&tagV(x.v)) || roundV(id));
   // Which save a round of comments belongs to. A review is written against the
   // version that was on the table when it was published, and it is answered by the
   // save that follows it - after that it is history, and the comments stay with the
@@ -2304,7 +2312,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="44b5f3222c0f";
+  const BUILD="d6a5818da09d";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
