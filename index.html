@@ -957,9 +957,18 @@ const FIELD={
   // here would need the answer it is being used to compute. v1 is also the right
   // base for this question - "has the contributor changed anything at all" - and the
   // diff below is where the predecessor matters.
-  const isRevision=(id,v)=>!!v&&!savedByRev(v)&&touchesAnswers(id,v);
+  // v.admin is checked before savedByRev(): an admin write carries the admin's own
+  // name, so revOf_() flags it rev===true and savedByRev() would drop it from the
+  // list. It is a real version of the proposal - it changes the answers on screen -
+  // and has to appear as one.
+  const isRevision=(id,v)=>!!v&&(v.admin===true||!savedByRev(v))&&touchesAnswers(id,v);
   const revsOf=id=>histOf(id).filter(v=>isRevision(id,v));  // proposal revisions only
-  const contribSaved=id=>revsOf(id).length>0;
+  // Freezing is the contributor's own doing, so it counts only their saves. An admin
+  // write is listed as a version but must not lock the contributor out of answering
+  // the round themselves - that would take the console away from them on the
+  // strength of an edit somebody else made.
+  const contribRevsOf=id=>revsOf(id).filter(v=>v.admin!==true);
+  const contribSaved=id=>contribRevsOf(id).length>0;
   // The revision before revision n, or 1 for the first one - v1 is the original
   // submission and is not a stored row, so it comes from ANSWERS. Showing v3 against
   // v1 folded v2's edits into the marks and read as though the contributor had made
@@ -1577,7 +1586,7 @@ const FIELD={
     const head=document.createElement("div"); head.className="taskhead";
     head.innerHTML='<h2>'+esc(t.name)+' <span class="vtag">'+esc(shownLabel)+'</span></h2>'+
       '<p class="byline">'+esc(t.who)+' · submitted 26 Aug 2026'+
-        (V2?' · '+hist.length+' revision'+(hist.length>1?'s':'')+', latest v'+V2.v+' by '+esc(V2.by||"contributor")+' on '+new Date(V2.at).toLocaleDateString():'')+'</p>'+
+        (V2?' · '+hist.length+' revision'+(hist.length>1?'s':'')+', latest v'+V2.v+' by '+esc(V2.by||"contributor")+(V2.admin?' (admin)':'')+' on '+new Date(V2.at).toLocaleDateString():'')+'</p>'+
       (V2?'<div class="vrow">'+
         '<div class="vswitch">'+
           '<button type="button" class="vbtn" data-v="1" aria-pressed="'+(cur===1)+'">v1 · as submitted</button>'+
@@ -1614,7 +1623,8 @@ const FIELD={
               'Turn on <b>Changes</b> to mark what you edited since v'+prevV(t.id,cur)+'.')+'</p>'
         : ro
         ? '<p class="vnote">Showing '+(cur===1?'the original submission':'iteration v'+cur+
-          (verAt(t.id,cur)&&verAt(t.id,cur).by?' saved by '+esc(verAt(t.id,cur).by):''))+
+          (verAt(t.id,cur)&&verAt(t.id,cur).by?' saved by '+esc(verAt(t.id,cur).by)+
+            (verAt(t.id,cur).admin?' (admin)':''):''))+
           ' — read only. Switch to v'+latestV(t.id)+' to keep editing.</p>'
         // Off by default, the marks have to say they are there. Without this the only
         // sign of them is a button labelled "Changes" among the version tabs.
@@ -2333,7 +2343,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="042d8fc18f86";
+  const BUILD="ce173034df7d";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";

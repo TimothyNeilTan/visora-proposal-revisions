@@ -425,6 +425,27 @@ function pushTokenOk_(t) {
   return diff === 0;
 }
 
+// The admin token writes a version row for one named proposal. It is deliberately
+// a second token rather than a wider scope on pushToken: the push token can only
+// make the Sheet re-read the gist, and anything holding it should not silently
+// gain the power to write a proposal's history. Re-minting revokes the old one.
+// Keep it in site/data/admin_token.txt, which is gitignored like the push token.
+function mintAdminToken() {
+  var tok = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+  PropertiesService.getScriptProperties().setProperty('adminToken', tok);
+  Logger.log('admin token: ' + tok);
+  return tok;
+}
+function adminTokenOk_(t) {
+  var want = PropertiesService.getScriptProperties().getProperty('adminToken');
+  if (!want || !t) return false;
+  t = String(t);
+  if (t.length !== want.length) return false;      // compared without early exit
+  var diff = 0;
+  for (var i = 0; i < want.length; i++) diff |= t.charCodeAt(i) ^ want.charCodeAt(i);
+  return diff === 0;
+}
+
 // ---- sessions ----------------------------------------------------------------
 function sessions_() {
   var raw = PropertiesService.getScriptProperties().getProperty('sessions');
@@ -544,6 +565,12 @@ function versionsByTask_() {
       at: r[i][2] ? String(r[i][2]) : null,
       by: r[i][3] ? String(r[i][3]) : null,
       rev: revOf_(own, tid, r[i][3]),
+      // Column 8 marks a row written through the admin endpoint. revOf_() calls it
+      // a reviewer save, because the name is not the contributor's - true, but the
+      // client must still list it as a version, and `rev` alone cannot tell it
+      // apart from a comment-only save. Absent on every row written before this
+      // column existed, which reads as false.
+      admin: String(r[i][7] || '').toUpperCase() === 'TRUE',
       answers: r[i][4] ? JSON.parse(r[i][4]) : {},
       rows: r[i][5] ? JSON.parse(r[i][5]) : [],
       responses: r[i][6] ? JSON.parse(r[i][6]) : {}
@@ -555,6 +582,7 @@ function versionsByTask_() {
     var s = legacy[t];
     if (!s.version) continue;
     out[t] = [{ v: 2, at: s.savedAt, by: s.savedBy, rev: revOf_(own, t, s.savedBy),
+                admin: false,                       // predates the admin endpoint
                 answers: s.version.answers || {}, rows: s.version.rows || [],
                 responses: s.responses || {} }];
   }
@@ -664,6 +692,45 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  // An admin token writes ONE version of ONE named proposal, and nothing else.
+  // The narrow scope is the whole point. `reviewer_read_only` further down exists
+  // because a reviewer's save appended a row to every proposal they could see,
+  // burning version numbers the contributor never used; a write that must name its
+  // task cannot repeat that. Handled before authed_() because the token stands in
+  // for a sign-in session, which only a person reading their mail can obtain.
+  //
+  // `v` is optional and explicit: it lets an admin land a version at a chosen
+  // number - useful where local artifacts are ahead of what the Sheet ever
+  // received - but it must be ahead of the newest row, so a write can never
+  // overwrite or re-number existing history.
+  if (e.parameter.path === 'version' && e.parameter.t) {
+    if (!adminTokenOk_(e.parameter.t)) return out_({ error: 'bad_token' });
+    var tid = String(e.parameter.task || '').trim();
+    if (!tid) return out_({ error: 'need_task' });
+    var abody;
+    try { abody = JSON.parse(e.postData.contents); } catch (err) { return out_({ error: 'bad_json' }); }
+    var aby = String((abody && abody.by) || e.parameter.by || '').trim();
+    if (!aby) return out_({ error: 'need_by' });     // never write an unattributed row
+    var aAnswers = JSON.stringify((abody && abody.answers) || {});
+    var aRows    = JSON.stringify((abody && abody.rows) || []);
+    if (aAnswers.length > 45000 || aRows.length > 45000) return out_({ error: 'too_large', task: tid });
+    var alock = LockService.getScriptLock();
+    try { alock.waitLock(20000); } catch (err) { return out_({ error: 'busy' }); }
+    try {
+      // Read the history inside the lock: two admin writes racing must not both
+      // resolve the same next version number.
+      var ahist = versionsByTask_()[tid] || [];
+      var alast = ahist.length ? ahist[ahist.length - 1].v : 1;   // v1 is the submission
+      var av    = Number(e.parameter.v || 0) || (alast + 1);
+      if (av <= alast) return out_({ error: 'version_not_ahead', last: alast, asked: av });
+      // Column 7 stays '{}': comment overlays have their own endpoint, and an admin
+      // version write must not clear or claim the contributor's response record.
+      sheet_('versions').appendRow(
+        [tid, av, new Date().toISOString(), aby, aAnswers, aRows, '{}', 'TRUE']);
+      return out_({ ok: true, task: tid, v: av, by: aby });
+    } finally { alock.releaseLock(); }
+  }
+
   var auth = authed_(e);
   if (auth.error) return out_({ error: auth.error });
   var who = auth.who;
