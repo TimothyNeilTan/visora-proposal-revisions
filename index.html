@@ -1551,12 +1551,18 @@ const FIELD={
     // Only the published round is counted here. A comment the reviewer just added
     // lives on the newest version, so counting it would have the note claim it was
     // written about a version it says nothing about.
-    const RV=roundV(t.id);
-    const nComments=itemsFor(t,isRev()).filter(x=>commentV(t.id,x)===RV).length;
-    const roundNote=(!FZ&&nComments&&cur!==RV)
-      ? '<p class="vnote">The '+nComments+' comment'+(nComments>1?'s':'')+' on this proposal '+
-        (RV===1?'were written about the original submission':'were written about v'+RV)+
-        '. Switch to v'+RV+' to read '+(nComments>1?'them':'it')+'.</p>'
+    // With rounds tagged per comment a proposal can carry several at once, so the
+    // note asks what is on THIS version rather than assuming one round for the
+    // whole proposal. It speaks up only when the version on screen has none.
+    const published=itemsFor(t,isRev()).filter(x=>!x.added);
+    const here=published.filter(x=>commentV(t.id,x)===cur).length;
+    const vName=v=>v===1?'the original submission':'v'+v;
+    const elsewhere=published.map(x=>commentV(t.id,x))
+      .filter((v,i,a)=>v!==cur&&a.indexOf(v)===i).sort((a,b)=>a-b);
+    const roundNote=(!FZ&&!here&&elsewhere.length)
+      ? '<p class="vnote">No comments were written about '+vName(cur)+'. The review'+
+        (elsewhere.length>1?'s are on ':' is on ')+
+        elsewhere.map(vName).join(' and ')+'.</p>'
       : '';
     const DIFF=diffShown(t.id,cur);                 // the before/after, not a bare iteration
     // Which version the verdict chips actually scored. Findings published after the
@@ -2327,7 +2333,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="38edcff869d0";
+  const BUILD="042d8fc18f86";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
