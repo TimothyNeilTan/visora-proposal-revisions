@@ -653,6 +653,28 @@ function doGet(e) {
     return out_({ ok: true, message: reload() });
   }
 
+  // Read-only counterpart to path=version: lets an admin token see what is actually
+  // stored for one task without a sign-in session, which is the only way to tell a
+  // write that stored nothing from a client that is failing to read it. Returns
+  // field lengths and a short head, never whole answers, so a leaked token cannot
+  // pull a proposal out. sheetCols is here because a mismatch against the seven
+  // columns versionsByTask_() indexes would silently shift every field.
+  if (e.parameter.path === 'peek' && e.parameter.t) {
+    if (!adminTokenOk_(e.parameter.t)) return out_({ error: 'bad_token' });
+    var ptid = String(e.parameter.task || '').trim();
+    if (!ptid) return out_({ error: 'need_task' });
+    var plist = versionsByTask_()[ptid] || [], pout = [];
+    for (var p = 0; p < plist.length; p++) {
+      var pv = plist[p], pa = pv.answers || {}, plen = {};
+      for (var pk in pa) plen[pk] = String(pa[pk] || '').length;
+      pout.push({ v: pv.v, by: pv.by, rev: pv.rev, admin: pv.admin,
+                  answerLengths: plen, rows: (pv.rows || []).length,
+                  workflowHead: String(pa.workflow || '').slice(0, 70) });
+    }
+    return out_({ ok: true, task: ptid, sheetCols: sheet_('versions').getLastColumn(),
+                  versions: pout });
+  }
+
   var auth = authed_(e);
   if (auth.error) return out_({ error: auth.error });
   var who = auth.who;
@@ -713,20 +735,51 @@ function doPost(e) {
     if (!aby) return out_({ error: 'need_by' });     // never write an unattributed row
     var aAnswers = JSON.stringify((abody && abody.answers) || {});
     var aRows    = JSON.stringify((abody && abody.rows) || []);
-    if (aAnswers.length > 45000 || aRows.length > 45000) return out_({ error: 'too_large', task: tid });
+    // The console renders the live view from the response overlay, not from the
+    // answers blob: getAns() reads responses['answer:<task>:<field>'] and getRows()
+    // reads responses['rubricrows:<task>'], each falling back to the original
+    // submission. A row with answers but no overlay therefore stores correctly and
+    // still displays as v1, which is exactly what the first admin write did. The
+    // caller supplies those keys; comment answers are keyed by comment id and are
+    // untouched, so an earlier version's answered comments still accumulate.
+    var aResp    = JSON.stringify((abody && abody.responses) || {});
+    if (aAnswers.length > 45000 || aRows.length > 45000 || aResp.length > 45000) {
+      return out_({ error: 'too_large', task: tid });
+    }
     var alock = LockService.getScriptLock();
     try { alock.waitLock(20000); } catch (err) { return out_({ error: 'busy' }); }
     try {
       // Read the history inside the lock: two admin writes racing must not both
       // resolve the same next version number.
-      var ahist = versionsByTask_()[tid] || [];
-      var alast = ahist.length ? ahist[ahist.length - 1].v : 1;   // v1 is the submission
-      var av    = Number(e.parameter.v || 0) || (alast + 1);
+      var ash = sheet_('versions'), vals = ash.getDataRange().getValues();
+
+      // Replace rewrites one existing row in place, so correcting a bad admin write
+      // costs nothing and does not burn a version number. Refused on any row this
+      // endpoint did not write: a contributor's revision is their own record, and an
+      // admin correcting their own mistake must never be able to overwrite it.
+      if (String(e.parameter.replace || '') === '1') {
+        var want = Number(e.parameter.v || 0);
+        if (!want) return out_({ error: 'need_version' });
+        for (var r = 1; r < vals.length; r++) {
+          if (String(vals[r][0]) !== tid || Number(vals[r][1]) !== want) continue;
+          if (String(vals[r][7] || '').toUpperCase() !== 'TRUE') {
+            return out_({ error: 'not_an_admin_row', task: tid, v: want,
+                          by: String(vals[r][3] || '') });
+          }
+          ash.getRange(r + 1, 1, 1, 8).setValues(
+            [[tid, want, new Date().toISOString(), aby, aAnswers, aRows, aResp, 'TRUE']]);
+          return out_({ ok: true, task: tid, v: want, by: aby, replaced: true });
+        }
+        return out_({ error: 'version_not_found', task: tid, asked: want });
+      }
+
+      var alast = 1;                                   // v1 is the original submission
+      for (var q = 1; q < vals.length; q++) {
+        if (String(vals[q][0]) === tid) alast = Math.max(alast, Number(vals[q][1]) || 0);
+      }
+      var av = Number(e.parameter.v || 0) || (alast + 1);
       if (av <= alast) return out_({ error: 'version_not_ahead', last: alast, asked: av });
-      // Column 7 stays '{}': comment overlays have their own endpoint, and an admin
-      // version write must not clear or claim the contributor's response record.
-      sheet_('versions').appendRow(
-        [tid, av, new Date().toISOString(), aby, aAnswers, aRows, '{}', 'TRUE']);
+      ash.appendRow([tid, av, new Date().toISOString(), aby, aAnswers, aRows, aResp, 'TRUE']);
       return out_({ ok: true, task: tid, v: av, by: aby });
     } finally { alock.releaseLock(); }
   }
