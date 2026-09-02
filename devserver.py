@@ -113,6 +113,10 @@ class H(http.server.SimpleHTTPRequestHandler):
             tok,who=self._who()
             if isinstance(who,str): return self._json({"error":who}, 200 if dialect=="apps" else 403)
             if not who: return self._json({"error":"unknown_email"}, 200 if dialect=="apps" else 403)
+            # The version history is the contributor's alone; a reviewer's save must
+            # not append rows to it. Mirrors the Apps Script, which refuses the same way.
+            if who["rev"]:
+                return self._json({"error":"reviewer_read_only"}, 200 if dialect=="apps" else 403)
             body=json.loads(self.rfile.read(int(self.headers["content-length"]) or 0) or b"{}")
             for tid in (body.get("versions") or {}):
                 if tid not in who["tasks"]:

@@ -701,6 +701,15 @@ function doPost(e) {
 
   if (e.parameter.path !== 'state') return out_({ error: 'not_found' });
 
+  // The version history is the contributor's record of their own work. A reviewer's
+  // save used to append a row to it - to every proposal they can see, not just the one
+  // on screen - which burned a version number and left the contributor's next revision
+  // numbered past a version that was never theirs. Nothing on the review side belongs
+  // in it: comment edits have their own endpoint, which writes the `comments` tab in
+  // place. Refused rather than silently dropped, so an older cached page cannot think
+  // it saved something it did not.
+  if (who.rev) return out_({ error: 'reviewer_read_only' });
+
   var body;
   try { body = JSON.parse(e.postData.contents); } catch (err) { return out_({ error: 'bad_json' }); }
   var responses = (body && body.responses) || {}, versions = (body && body.versions) || {};

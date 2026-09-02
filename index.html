@@ -1064,6 +1064,13 @@ const FIELD={
   const outstanding=()=>curItems().filter(i=>!answered(STATE.responses[i.id]));
   function refreshSaveGate(){
     const btn=$("#btn-save"); if(!btn) return;
+    // Saving is the contributor's action. A reviewer's save used to stamp a row on
+    // the proposal - one on every proposal they can see, in fact - which consumed a
+    // version number and made the contributor's next revision land on v4 with no v3
+    // to show for it. Nothing the review side does belongs in the contributor's
+    // version history, and the backend now refuses it, so do not offer it.
+    btn.hidden=isRev();
+    if(btn.hidden) return;
     if(current&&frozen(current)){                        // saved and locked: nothing left to write
       btn.disabled=true;
       btn.title="This proposal is saved as v"+latestV(current)+" and locked.";
@@ -2103,11 +2110,19 @@ const FIELD={
   function outgoingResponses(){
     const own={};                                   // comment id -> the task it belongs to
     ALL.forEach(i=>{ own[i.id]=i.task; });
+    const taskOf=k=> k.indexOf("answer:")===0     ? k.split(":")[1]
+                   : k.indexOf("rubricrows:")===0 ? k.slice("rubricrows:".length)
+                   : own[k];
     const allow={};
     Object.keys(PENDING||{}).forEach(id=>
       Object.keys(PENDING[id]||{}).forEach(k=>{ allow[k]=true; }));
     const out={};
     Object.keys(STATE.responses||{}).forEach(k=>{
+      const t=taskOf(k);
+      // Only the proposal being saved. The backend writes a row per task it is handed
+      // work for, so sending the whole map appended a row to every proposal this
+      // person has - each one burning a version number on a proposal nobody touched.
+      if(t&&PENDING&&!PENDING[t]) return;
       if(own[k]&&!allow[k]) return;                 // a round already filed on its version
       out[k]=STATE.responses[k];
     });
@@ -2312,7 +2327,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="d6a5818da09d";
+  const BUILD="38edcff869d0";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
@@ -2551,6 +2566,10 @@ const FIELD={
   function newestVersions(){
     const out={};
     Object.keys(STATE.versions||{}).forEach(id=>{
+      // Only the proposal this save is for. Handing the backend every proposal made
+      // it append a row to each one, so saving a single answer burned a version
+      // number on every other proposal the contributor owns.
+      if(PENDING&&!PENDING[id]) return;
       const list=STATE.versions[id];
       const v=Array.isArray(list)? list[list.length-1] : list;
       if(v) out[id]={answers:v.answers||{}, rows:v.rows||[]};
