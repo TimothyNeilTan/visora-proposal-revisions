@@ -1174,8 +1174,20 @@ const FIELD={
 
   // ---- answers: base text the contributor submitted, plus wording accepted from review ----
   function akey(task,field){ return "answer:"+task+":"+field; }
+  // The newest stored version and the response overlay can disagree, because the
+  // overlay accumulates across every save while the version row is a snapshot. A
+  // save made through the console writes both and they agree; a version written any
+  // other way carries answers alone, and reading the overlay first rendered it as
+  // the original submission while the switcher still listed it as a version.
+  // Whichever was written later wins, so a contributor's unsaved edit - stamped when
+  // they typed it - still beats an older stored version.
+  const newestVer=task=>{const l=histOf(task); return l.length? l[l.length-1] : null;};
+  const newestVerAt=task=>{const v=newestVer(task); return (v&&v.at&&Date.parse(v.at))||0;};
   function getAns(task,field){
     const rec=STATE.responses[akey(task,field)];
+    const nv=newestVer(task), fromVer=nv&&nv.answers&&nv.answers[field];
+    if(typeof fromVer==="string"&&fromVer.length&&newestVerAt(task)>((rec&&rec.at)||0))
+      return {base:fromVer,ins:[]};
     const base=(rec&&typeof rec.text==="string") ? rec.text : ((ANSWERS[task]||{})[field]||"");
     const ins=(rec&&Array.isArray(rec.ins)) ? rec.ins : [];
     return {base,ins};
@@ -1249,6 +1261,9 @@ const FIELD={
   function rkey(task){ return "rubricrows:"+task; }
   function getRows(task){
     const rec=STATE.responses[rkey(task)];
+    const nv=newestVer(task);                       // same precedence as getAns()
+    if(nv&&Array.isArray(nv.rows)&&nv.rows.length&&newestVerAt(task)>((rec&&rec.at)||0))
+      return nv.rows;
     if(rec&&Array.isArray(rec.rows)) return rec.rows;
     return splitRubric((ANSWERS[task]||{}).rubric||"");
   }
@@ -2343,7 +2358,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="30f8628ae05e";
+  const BUILD="8427f8878a51";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
