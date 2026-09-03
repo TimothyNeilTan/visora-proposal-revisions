@@ -992,13 +992,21 @@ const FIELD={
   // saved, the page has to open again - otherwise the new review reaches everyone
   // except the person it was written for. `findingsAt` is stamped per task when the
   // findings are published; a task without one behaves as it always did.
+  // Measured against the contributor's own last save, not the newest row of any
+  // kind: an admin write that lands after the findings would otherwise push `last`
+  // past findingsAt and re-lock a proposal the findings had just reopened.
   const findingsSince=id=>{
-    const t=TASKS.find(x=>x.id===id), l=revsOf(id);
+    const t=TASKS.find(x=>x.id===id), l=contribRevsOf(id);
     if(!t||!t.findingsAt||!l.length) return false;
     const last=l[l.length-1].at;
     return !!last && String(t.findingsAt)>String(last);
   };
-  const frozen=id=>!isRev()&&contribSaved(id)&&!findingsSince(id);
+  // An admin version on top of the contributor's save is handed to them to work
+  // from, so it reopens the console the same way fresh findings do. The freeze is
+  // the contributor's own doing and only their own save can be the thing it holds.
+  const adminSince=id=>{ const l=revsOf(id); return l.length>0&&l[l.length-1].admin===true; };
+  const reopened=id=>findingsSince(id)||adminSince(id);
+  const frozen=id=>!isRev()&&contribSaved(id)&&!reopened(id);
   // The version a round of findings was written against: the newest revision that
   // existed when the round was published. A review of v2 is not a review of the v3
   // that answers it, so its comments show on v2 and nowhere else - switching to a
@@ -1031,7 +1039,7 @@ const FIELD={
   // comments under a version nobody had reviewed, so v3 came back looking as though
   // it had been graded and answered too. True only for the save that answers an open
   // round: the first save of all, or the first one after fresh findings landed.
-  const answersOpenReview=id=>!contribSaved(id)||findingsSince(id);
+  const answersOpenReview=id=>!contribSaved(id)||reopened(id);
   // Reviewers were excluded from the diff by frozen(), which is backwards - they are
   // the ones reading for what changed. It is a toggle now, off until asked for: the
   // marks answered "what changed" for a reader who had not asked that yet, and the
@@ -2358,7 +2366,7 @@ const FIELD={
 
   // ---- backend: this page holds no proposal data until the API sends it ----
   let API=(window.PROPOSAL_API||"").trim();
-  const BUILD="8427f8878a51";
+  const BUILD="8c2ee9a06cdd";
   const FRESHKEY="proposal-revisions/reloaded";
   const WHOKEY="proposal-revisions/email";
   const SESSKEY="proposal-revisions/session";
@@ -2548,27 +2556,41 @@ const FIELD={
     // A stalled attempt used to leave one unchanging sentence on screen for the whole
     // wait, which reads as dead rather than slow. Only from the second try, though:
     // the first needs no excuse, and saying so would make the common case look sick.
-    const progress=(i,n)=>{
+    const progress=i=>{
       if(!i) return;
       const rm=document.getElementById("resume-msg");
-      if(!CODE && rm){ rm.textContent="The server is being slow. Still trying — attempt "+(i+1)+" of "+n+"…"; return; }
-      if(cgo) cgo.textContent="Attempt "+(i+1)+" of "+n+"…";
+      if(!CODE && rm){ rm.textContent="The server is waking up. Still trying — attempt "+(i+1)+"…"; return; }
+      if(cgo) cgo.textContent="Attempt "+(i+1)+"…";
     };
-    // Apps Script drops the occasional cold-start request, so retry before giving up.
-    // Each try is given its own deadline rather than being left to hang, and the
-    // deadlines grow: a server that is genuinely slow but alive still gets a patient
-    // last attempt, while a stall no longer costs the whole minute it used to.
-    const DEADLINES=[8000,15000,25000];
-    let data=null, lastErr=null;
-    for(let attempt=0; attempt<DEADLINES.length && !data; attempt++){
-      // A 404 here is the cold-start artifact, not an answer, so it is retried at
-      // once - waiting out a backoff for it was pure dead time. A real failure still
-      // backs off, so a struggling server is not hammered.
-      if(attempt) await new Promise(r=>setTimeout(r, lastErr==="http 404" ? 0 : 1200*attempt));
-      progress(attempt,DEADLINES.length);
+    // Cold start is the cost here, not the work. Measured on a fresh deployment after
+    // an idle spell: the first two requests came back 404 at 31.5s and 8.4s, and every
+    // one after that answered in under a second - while `peek`, which reads every
+    // version row, runs in about two. So a fixed count of attempts is the wrong shape.
+    // The warm-up alone can eat three of them and turn a page that was about to work
+    // into "could not reach the server", which is a worse failure than the slow
+    // success it replaced. What bounds the wait now is a total budget, and a 404 is
+    // treated as the platform warming up rather than as an answer, so it does not
+    // spend one of the few attempts a real failure is allowed.
+    const BUDGET_MS=45000;       // the whole wait, however it ends up being spent
+    const MAX_REAL=3;            // real failures worth retrying
+    const MAX_WARM=6;            // 404s to sit through before calling it broken
+    const DEADLINE_MS=15000;     // one attempt; a warm call answers in under three
+    const t0=Date.now(), left=()=>BUDGET_MS-(Date.now()-t0);
+    let data=null, lastErr=null, real=0, warm=0, tries=0;
+    while(!data && real<MAX_REAL && warm<MAX_WARM && left()>2000){
+      // A real failure backs off, so a struggling server is not hammered. A 404 is
+      // retried at once - waiting out a backoff for it was pure dead time - but only
+      // the first one, so a fast 404 storm cannot spin.
+      if(tries){
+        const wait = lastErr==="http 404" ? (warm>1? 300 : 0)
+                                          : Math.min(1200*real, Math.max(0,left()-2000));
+        if(wait) await new Promise(r=>setTimeout(r,wait));
+      }
+      progress(tries); tries++;
       try{
-        const r=await fetchDeadline(apiUrl("session"),DEADLINES[attempt]);
-        if(!r.ok && r.status!==403){ lastErr="http "+r.status; continue; }
+        const r=await fetchDeadline(apiUrl("session"),Math.min(DEADLINE_MS,left()));
+        if(r.status===404){ lastErr="http 404"; warm++; continue; }   // still waking up
+        if(!r.ok && r.status!==403){ lastErr="http "+r.status; real++; continue; }
         const body=await r.json();
         if(r.status===403 || (body&&body.error)){
           const code=body&&body.error;
@@ -2581,10 +2603,11 @@ const FIELD={
           return;
         }
         data=body;
-      }catch(e){ lastErr=timedOut(e)? "timed out" : String(e); }
+      }catch(e){ lastErr=timedOut(e)? "timed out" : String(e); real++; }
     }
     if(!data){
-      done("Could not reach the server after three tries ("+(lastErr||"no answer")+"). This is usually temporary — try again.",
+      done("Could not reach the server ("+(lastErr||"no answer")+") after "+tries+
+           (tries===1?" try":" tries")+". This is usually temporary — try again.",
            {keep:true});
       return;
     }
